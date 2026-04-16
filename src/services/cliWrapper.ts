@@ -289,9 +289,8 @@ export class SkillsCliService {
             if (options.agents?.length) {
                 args.push('--agent', ...options.agents);
             }
-            if (options.yes) {
-                args.push('--yes');
-            }
+            // Always use --yes for non-interactive mode
+            args.push('--yes');
 
             const result = await this.runCommand(args.join(' '));
             return this.parseRemoveResults(result.stdout, skills);

@@ -596,17 +596,22 @@ export async function activate(context: vscode.ExtensionContext) {
                     return;
                 }
 
-                // Ejecutar el comando CLI
-                const terminal = vscode.window.createTerminal('Skills Uninstall');
-                terminal.show();
-                terminal.sendText(`npx skills remove "${skillName}"`);
+                // Determinar scope del skill para remover correctamente
+                const skillScope = skill.scope; // 'project' | 'global' | undefined
+
+                // Ejecutar el comando CLI via service (incluye --yes automáticamente)
+                const results = await skillsService.removeSkills([skillName], { 
+                    global: skillScope === 'global'
+                });
+                const result = results[0];
                 
-                vscode.window.showInformationMessage(`Uninstalling skill: ${skillName}`);
+                if (result?.success) {
+                    vscode.window.showInformationMessage(`✅ Uninstalled skill: ${skillName}`);
+                } else {
+                    vscode.window.showErrorMessage(`❌ Failed to uninstall ${skillName}: ${result?.message || 'Unknown error'}`);
+                }
                 
-                // Refresh después de unos segundos
-                setTimeout(async () => {
-                    await skillsProvider.refreshAsync();
-                }, 3000);
+                await skillsProvider.refreshAsync();
                 
             } catch (error: any) {
                 console.error('❌ [Uninstall] Error uninstalling skill:', error);
