@@ -281,7 +281,7 @@ export async function activate(context: vscode.ExtensionContext) {
         
         // Create tree providers
         console.log('🌳 [Extension] Creating tree providers...');
-        const skillsService = new SkillsService(cliService, configService, githubService);
+        const skillsService = new SkillsService(cliService, configService);
         const skillsProvider = new SkillsTreeProvider(skillsService);
         const repoProvider = new RepositoryTreeProvider(configService);
         
@@ -458,6 +458,77 @@ export async function activate(context: vscode.ExtensionContext) {
             await skillsProvider.installSkill(skillName, repository, path);
         });
 
+        // Comando específico para install desde available skills
+        const skillInstallCommand = vscode.commands.registerCommand('skills.skill.install', async (skillItem: any) => {
+            try {
+                console.log('🚀 [Install] Installing skill:', skillItem);
+                const skillName = skillItem.skillName || skillItem.name;
+                const repository = skillItem.repository;
+                
+                if (!skillName || !repository) {
+                    vscode.window.showErrorMessage('Missing skill name or repository info');
+                    return;
+                }
+
+                // Use skillsService.installSkill instead of direct terminal command
+                // This ensures we get --agent '*' and --yes for non-interactive install
+                console.log(`🚀 [Install] Calling skillsService.installSkill with: ${repository}, ${skillName}`);
+                const result = await skillsService.installSkill(repository, skillName);
+                
+                if (result.success) {
+                    vscode.window.showInformationMessage(`Successfully installed skill: ${skillName}`);
+                } else {
+                    vscode.window.showErrorMessage(`Failed to install skill: ${result.message}`);
+                }
+                
+                // Refresh UI
+                await skillsProvider.refreshAsync();
+                
+            } catch (error: any) {
+                console.error('❌ [Install] Error installing skill:', error);
+                vscode.window.showErrorMessage(`Failed to install skill: ${error.message}`);
+            }
+        });
+
+        // Comando específico para uninstall desde installed skills
+        const skillUninstallCommand = vscode.commands.registerCommand('skills.skill.uninstall', async (skillItem: any) => {
+            try {
+                console.log('🗑️ [Uninstall] Uninstalling skill:', skillItem);
+                const skillName = skillItem.name || skillItem.skillName;
+                
+                if (!skillName) {
+                    vscode.window.showErrorMessage('Missing skill name');
+                    return;
+                }
+
+                // Confirmar antes de desinstalar
+                const confirm = await vscode.window.showWarningMessage(
+                    `Are you sure you want to uninstall "${skillName}"?`,
+                    'Yes', 'Cancel'
+                );
+                
+                if (confirm !== 'Yes') {
+                    return;
+                }
+
+                // Ejecutar el comando CLI
+                const terminal = vscode.window.createTerminal('Skills Uninstall');
+                terminal.show();
+                terminal.sendText(`npx skills remove "${skillName}"`);
+                
+                vscode.window.showInformationMessage(`Uninstalling skill: ${skillName}`);
+                
+                // Refresh después de unos segundos
+                setTimeout(async () => {
+                    await skillsProvider.refreshAsync();
+                }, 3000);
+                
+            } catch (error: any) {
+                console.error('❌ [Uninstall] Error uninstalling skill:', error);
+                vscode.window.showErrorMessage(`Failed to uninstall skill: ${error.message}`);
+            }
+        });
+
         const debugEnvironmentCommand = vscode.commands.registerCommand('skills.debug.environment', async () => {
             const output = cliService.showDebugOutput();
             const token = configService.getGitHubToken();
@@ -582,6 +653,8 @@ export async function activate(context: vscode.ExtensionContext) {
             removeTokenCommand,
             testTokenCommand,
             installSkillCommand,
+            skillInstallCommand,
+            skillUninstallCommand,
             debugEnvironmentCommand,
             testCliCommand
         );

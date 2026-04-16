@@ -15,15 +15,13 @@ export interface RepositorySkills {
 export class SkillsService {
     private cliService: SkillsCliService;
     private configService: ConfigService;
-    private githubService: any; // GitHubService type
     private cache: Map<string, RepositorySkills> = new Map();
     private cacheTimeout = 5 * 60 * 1000; // 5 minutes
     private outputChannel: vscode.OutputChannel;
 
-    constructor(cliService: SkillsCliService, configService: ConfigService, githubService: any) {
+    constructor(cliService: SkillsCliService, configService: ConfigService) {
         this.cliService = cliService;
         this.configService = configService;
-        this.githubService = githubService;
         this.outputChannel = vscode.window.createOutputChannel('Skills Service Debug');
     }
 
@@ -82,32 +80,37 @@ export class SkillsService {
 
     // Get available skills from all configured repositories
     async getAvailableSkills(forceRefresh = false): Promise<RepositorySkills[]> {
+        this.outputChannel.appendLine(`📚 [SkillsService] *** ENTRY getAvailableSkills method ***`);
         this.outputChannel.appendLine(`📚 [SkillsService] Getting available skills, forceRefresh: ${forceRefresh}`);
         
         const repositories = await this.configService.getRepositories();
         this.outputChannel.appendLine(`📚 [SkillsService] Found ${repositories.length} configured repositories`);
+        this.outputChannel.appendLine(`📚 [SkillsService] Repositories: ${JSON.stringify(repositories.map(r => ({name: r.name, enabled: r.enabled})))}`);
         
         const results: RepositorySkills[] = [];
 
         for (const repository of repositories.filter(r => r.enabled !== false)) {
-            this.outputChannel.appendLine(`📚 [SkillsService] Processing repository: ${repository.name}`);
+            this.outputChannel.appendLine(`📚 [SkillsService] *** PROCESSING REPOSITORY: ${repository.name} ***`);
             
             try {
                 let repositorySkills = this.getCachedRepositorySkills(repository.id);
                 this.outputChannel.appendLine(`📚 [SkillsService] Cache check for ${repository.name}: ${repositorySkills ? 'HIT' : 'MISS'}`);
                 
                 if (!repositorySkills || forceRefresh) {
-                    this.outputChannel.appendLine(`📚 [SkillsService] Loading fresh data for ${repository.name}`);
+                    this.outputChannel.appendLine(`📚 [SkillsService] *** CALLING loadRepositorySkills FOR ${repository.name} ***`);
                     repositorySkills = await this.loadRepositorySkills(repository);
+                    this.outputChannel.appendLine(`📚 [SkillsService] *** BACK FROM loadRepositorySkills FOR ${repository.name} ***`);
                     this.setCachedRepositorySkills(repository.id, repositorySkills);
                     this.outputChannel.appendLine(`📚 [SkillsService] Cached results for ${repository.name}`);
+                } else {
+                    this.outputChannel.appendLine(`📚 [SkillsService] *** USING CACHE FOR ${repository.name} - NOT CALLING loadRepositorySkills ***`);
                 }
                 
                 results.push(repositorySkills);
                 this.outputChannel.appendLine(`📚 [SkillsService] Added ${repositorySkills.skills.length} skills from ${repository.name}`);
                 
             } catch (error) {
-                this.outputChannel.appendLine(`❌ [SkillsService] Error processing repository ${repository.name}: ${(error as Error).message}`);
+                this.outputChannel.appendLine(`❌ [SkillsService] *** EXCEPTION in getAvailableSkills for ${repository.name}: ${(error as Error).message} ***`);
                 results.push({
                     repository,
                     skills: [],
@@ -145,8 +148,22 @@ export class SkillsService {
             agents?: string[];
         } = {}
     ): Promise<InstallResult> {
+        this.outputChannel.appendLine(`🚀 [INSTALL] *** ENTRY installSkill method ***`);
+        this.outputChannel.appendLine(`🚀 [INSTALL] repository: ${repository}`);
+        this.outputChannel.appendLine(`🚀 [INSTALL] skillName: ${skillName}`);
+        this.outputChannel.appendLine(`🚀 [INSTALL] options: ${JSON.stringify(options)}`);
+        
         const scope = options.scope || this.configService.getDefaultScope();
-        const agents = options.agents || this.configService.getTargetAgents();
+        this.outputChannel.appendLine(`🚀 [INSTALL] scope: ${scope}`);
+        
+        // Install only to specific agents that are available  
+        // This avoids the interactive agent selection prompt and agents not found errors
+        const agents = ['cursor'];
+        this.outputChannel.appendLine(`🚀 [INSTALL] agents: ${JSON.stringify(agents)}`);
+        
+        // Convert repository URL to proper CLI format
+        const repoSource = this.formatRepositoryForCLI(repository);
+        this.outputChannel.appendLine(`🚀 [INSTALL] repoSource (formatted): ${repoSource}`);
 
         const installOptions = {
             global: scope === 'global',
@@ -154,6 +171,8 @@ export class SkillsService {
             skills: skillName ? [skillName] : undefined,
             yes: true // Auto-confirm for better UX
         };
+        
+        this.outputChannel.appendLine(`🚀 [INSTALL] installOptions: ${JSON.stringify(installOptions)}`);
 
         const progressOptions = {
             location: vscode.ProgressLocation.Notification,
@@ -161,9 +180,29 @@ export class SkillsService {
             cancellable: false
         };
 
-        return vscode.window.withProgress(progressOptions, async () => {
-            return this.cliService.addSkill(repository, installOptions);
-        });
+        this.outputChannel.appendLine(`🚀 [INSTALL] About to call cliService.addSkill...`);
+        
+        try {
+            const result = await vscode.window.withProgress(progressOptions, async (progress) => {
+                this.outputChannel.appendLine(`🚀 [INSTALL] Inside withProgress callback`);
+                this.outputChannel.appendLine(`🚀 [INSTALL] cliService exists: ${!!this.cliService}`);
+                this.outputChannel.appendLine(`🚀 [INSTALL] cliService.addSkill exists: ${!!this.cliService?.addSkill}`);
+                progress.report({ message: "Installing skill..." });
+                
+                const cliResult = await this.cliService.addSkill(repoSource, installOptions);
+                this.outputChannel.appendLine(`🚀 [INSTALL] CLI result received: ${JSON.stringify(cliResult)}`);
+                
+                return cliResult;
+            });
+            
+            this.outputChannel.appendLine(`🚀 [INSTALL] withProgress completed: ${JSON.stringify(result)}`);
+            return result;
+            
+        } catch (error) {
+            this.outputChannel.appendLine(`❌ [INSTALL] Exception in installSkill: ${(error as Error).message}`);
+            this.outputChannel.appendLine(`❌ [INSTALL] Exception stack: ${(error as Error).stack}`);
+            throw error;
+        }
     }
 
     // Update skills
@@ -274,51 +313,75 @@ export class SkillsService {
         this.cache.set(`${repositoryId}_time`, Date.now());
     }
 
+    // Convert repository URL to proper CLI format
+    private formatRepositoryForCLI(repositoryUrl: string): string {
+        // GitHub shorthand format: extract "owner/repo" from "https://github.com/owner/repo"
+        const githubMatch = repositoryUrl.match(/^https?:\/\/github\.com\/([^\/]+\/[^\/]+)(?:\.git)?(?:\/.*)?$/);
+        if (githubMatch) {
+            return githubMatch[1]; // Returns "owner/repo"
+        }
+        
+        // For other formats (GitLab, direct git URLs, etc.), use the URL as-is
+        return repositoryUrl;
+    }
+
     private async loadRepositorySkills(repository: Repository): Promise<RepositorySkills> {
+        this.outputChannel.appendLine(`🏗️  [SkillsService] *** ENTRY loadRepositorySkills method ***`);
         this.outputChannel.appendLine(`🏗️  [SkillsService] Loading skills from repository: ${repository.name} (${repository.url})`);
         this.outputChannel.appendLine(`🏗️  [SkillsService] Repository type: ${repository.type}`);
+        this.outputChannel.appendLine(`🏗️  [SkillsService] *** CLEARING CACHE AND FORCING FRESH LOAD ***`);
+        
+        // Clear any existing cache for this repository
+        this.cache.delete(repository.id);
+        this.cache.delete(`${repository.id}_time`);
+        this.outputChannel.appendLine(`🏗️  [SkillsService] Cache cleared for repository: ${repository.name}`);
         
         try {
-            if (repository.type === 'github') {
-                this.outputChannel.appendLine(`🏗️  [SkillsService] Using GitHub API to find skills...`);
-                
-                // Use GitHub API service instead of CLI
-                const githubSkills = await this.githubService.findSkillsInRepository(repository.url);
-                this.outputChannel.appendLine(`🏗️  [SkillsService] GitHub API found ${githubSkills.length} skills`);
-                
-                // Convert GitHub API response to SkillSearchResult format
-                const skills: SkillSearchResult[] = githubSkills.map(skill => ({
-                    name: skill.name,
-                    description: skill.description,
+            this.outputChannel.appendLine(`🏗️  [SkillsService] *** ENTERING TRY BLOCK ***`);
+            // Use CLI-based discovery for all repository types
+            this.outputChannel.appendLine(`🏗️  [SkillsService] Using CLI to discover skills...`);
+            this.outputChannel.appendLine(`🏗️  [SkillsService] *** CALLING listRepositorySkills METHOD ***`);
+            
+            const skillNames = await this.cliService.listRepositorySkills(repository.url);
+            this.outputChannel.appendLine(`🏗️  [SkillsService] *** BACK FROM listRepositorySkills METHOD ***`);
+            this.outputChannel.appendLine(`🏗️  [SkillsService] CLI found ${skillNames.length} skills`);
+            this.outputChannel.appendLine(`🏗️  [SkillsService] Raw skillNames type: ${typeof skillNames}`);
+            this.outputChannel.appendLine(`🏗️  [SkillsService] Raw skillNames isArray: ${Array.isArray(skillNames)}`);
+            this.outputChannel.appendLine(`🏗️  [SkillsService] Raw skillNames: ${JSON.stringify(skillNames)}`);
+            
+            // Convert skill names to SkillSearchResult format
+            const skills: SkillSearchResult[] = skillNames.map((skillName, index) => {
+                this.outputChannel.appendLine(`🏗️  [SkillsService] Mapping skill ${index}: ${typeof skillName} = ${skillName}`);
+                return {
+                    name: skillName,
+                    description: `Skill: ${skillName}`,
                     source: repository.url,
-                    path: skill.path,
+                    path: `skills/${skillName}`,
                     repository: repository.url,
-                    repositoryUrl: repository.url,
-                    installed: false
-                }));
-                
-                this.outputChannel.appendLine(`🏗️  [SkillsService] Converted to ${skills.length} skill search results`);
-                skills.forEach(skill => {
-                    this.outputChannel.appendLine(`  - ${skill.name}: ${skill.description}`);
-                });
-                
-                return {
-                    repository,
-                    skills
+                    downloadUrl: null,
+                    type: 'skill'
                 };
-                
-            } else {
-                // For non-GitHub repositories, fall back to CLI (if needed)
-                this.outputChannel.appendLine(`🏗️  [SkillsService] Non-GitHub repo, skipping for now`);
-                return {
-                    repository,
-                    skills: [],
-                    error: 'Only GitHub repositories are supported currently'
-                };
-            }
+            });
+            
+            this.outputChannel.appendLine(`🏗️  [SkillsService] Successfully loaded ${skills.length} skills from ${repository.name}`);
+            skills.forEach((skill, index) => {
+                this.outputChannel.appendLine(`  - ${index}: ${skill.name} (${skill.description})`);
+            });
+            
+            return {
+                repository,
+                skills,
+                error: null
+            };
             
         } catch (error) {
-            this.outputChannel.appendLine(`❌ [SkillsService] Error loading repository ${repository.name}: ${(error as Error).message}`);
+            this.outputChannel.appendLine(`❌ [SkillsService] *** EXCEPTION CAUGHT IN loadRepositorySkills ***`);
+            this.outputChannel.appendLine(`❌ [SkillsService] Error type: ${typeof error}`);
+            this.outputChannel.appendLine(`❌ [SkillsService] Error message: ${(error as Error).message}`);
+            this.outputChannel.appendLine(`❌ [SkillsService] Error stack: ${(error as Error).stack}`);
+            this.outputChannel.appendLine(`❌ [SkillsService] Repository name: ${repository.name}`);
+            this.outputChannel.appendLine(`❌ [SkillsService] Returning empty skills array due to error`);
+            
             return {
                 repository,
                 skills: [],

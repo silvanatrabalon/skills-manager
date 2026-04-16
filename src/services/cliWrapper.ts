@@ -136,28 +136,42 @@ export class SkillsCliService {
     }
 
     async addSkill(repository: string, options: AddSkillOptions = {}): Promise<InstallResult> {
+        this.outputChannel.appendLine(`🚀 [CLI] *** ENTRY addSkill method ***`);
+        this.outputChannel.appendLine(`🚀 [CLI] repository: ${repository}`);
+        this.outputChannel.appendLine(`🚀 [CLI] options: ${JSON.stringify(options)}`);
+        
         try {
             const args = ['npx', 'skills', 'add', repository];
             
             if (options.global) {
+                this.outputChannel.appendLine(`🚀 [CLI] Adding --global`);
                 args.push('--global');
             }
             if (options.agents?.length) {
-                args.push('--agent', ...options.agents);
+                this.outputChannel.appendLine(`🚀 [CLI] Adding --agent with: ${JSON.stringify(options.agents)}`);
+                // Escape '*' properly for shell
+                const escapedAgents = options.agents.map(agent => agent === '*' ? "'*'" : agent);
+                this.outputChannel.appendLine(`🚀 [CLI] Escaped agents: ${JSON.stringify(escapedAgents)}`);
+                args.push('--agent', ...escapedAgents);
             }
             if (options.skills?.length) {
+                this.outputChannel.appendLine(`🚀 [CLI] Adding --skill with: ${JSON.stringify(options.skills)}`);
                 args.push('--skill', ...options.skills);
             }
             if (options.copy) {
+                this.outputChannel.appendLine(`🚀 [CLI] Adding --copy`);
                 args.push('--copy');
             }
             if (options.yes) {
+                this.outputChannel.appendLine(`🚀 [CLI] Adding --yes`);
                 args.push('--yes');
             }
             if (options.all) {
+                this.outputChannel.appendLine(`🚀 [CLI] Adding --all`);
                 args.push('--all');
             }
 
+            this.outputChannel.appendLine(`🚀 [CLI] Final install command: ${args.join(' ')}`);
             const result = await this.runCommand(args.join(' '));
             
             return {
@@ -268,6 +282,113 @@ export class SkillsCliService {
         }
 
         await this.runCommand(args.join(' '), path);
+    }
+
+    // List skills available in a repository using CLI discovery
+    async listRepositorySkills(repository: string): Promise<string[]> {
+        this.outputChannel.appendLine(`🔍 [CLI] Starting discovery for repository: ${repository}`);
+        
+        try {
+            // Use a non-existent skill name to trigger the CLI to list all skills
+            // IMPORTANT: '*' must be quoted to work in Node.js shell
+            const args = ['npx', 'skills', 'add', repository, '--skill', 'nonexistent-skill-name', '--agent', "'*'", '-y'];
+            this.outputChannel.appendLine(`🔍 [CLI] Command: ${args.join(' ')}`);
+            
+            const result = await this.runCommand(args.join(' '));
+            this.outputChannel.appendLine(`🔍 [CLI] SUCCESS - stdout length: ${result.stdout.length}`);
+            this.outputChannel.appendLine(`🔍 [CLI] SUCCESS - stderr length: ${result.stderr.length}`);
+            
+            // Get complete output and parse it
+            const fullOutput = result.stdout + '\n' + result.stderr;
+            return this.parseSkillsFromCompleteOutput(fullOutput);
+            
+        } catch (error) {
+            // The command will fail (exit code != 0) but still output the skills list
+            const errorMessage = (error as any).message || '';
+            const errorStdout = (error as any).stdout || '';
+            const errorStderr = (error as any).stderr || '';
+            
+            this.outputChannel.appendLine(`🔍 [CLI] EXPECTED ERROR - getting complete output...`);
+            
+            // Get complete output and parse it
+            const fullOutput = errorStdout + '\n' + errorStderr + '\n' + errorMessage;
+            return this.parseSkillsFromCompleteOutput(fullOutput);
+        }
+    }
+    
+    // Parse skills from complete CLI output by finding "Available" section
+    private parseSkillsFromCompleteOutput(fullOutput: string): string[] {
+        this.outputChannel.appendLine(`🔍 [PARSE] Starting parse of complete output (${fullOutput.length} chars)`);
+        
+        // Find "Available" section and cut everything before it
+        const availableIndex = fullOutput.toLowerCase().indexOf('available');
+        if (availableIndex === -1) {
+            this.outputChannel.appendLine(`🔍 [PARSE] No "Available" section found`);
+            return [];
+        }
+        
+        this.outputChannel.appendLine(`🔍 [PARSE] Found "Available" at position ${availableIndex}`);
+        const afterAvailable = fullOutput.substring(availableIndex);
+        this.outputChannel.appendLine(`🔍 [PARSE] Text after "Available":\n${afterAvailable}`);
+        
+        // Now parse the skills from the section after "Available"
+        const skills: string[] = [];
+        const lines = afterAvailable.split('\n');
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Look for lines like "│    - skill-name" or "   - skill-name"
+            const skillMatch = line.match(/[-│\s]*-\s*([a-zA-Z0-9\-_]+)/);
+            if (skillMatch) {
+                const skillName = skillMatch[1];
+                if (!skills.includes(skillName)) {
+                    skills.push(skillName);
+                    this.outputChannel.appendLine(`🔍 [PARSE] Found skill: ${skillName}`);
+                }
+            }
+        }
+        
+        this.outputChannel.appendLine(`🔍 [PARSE] Final result: ${skills.length} skills found: [${skills.join(', ')}]`);
+        return skills;
+    }
+    
+    // Parse skills list from CLI output
+    private parseSkillsList(output: string): string[] {
+        this.outputChannel.appendLine(`🔍 [PARSE] Starting parse of output (${output.length} chars)`);
+        
+        const skills: string[] = [];
+        const lines = output.split('\n');
+        let foundAvailableSection = false;
+        
+        this.outputChannel.appendLine(`🔍 [PARSE] Processing ${lines.length} lines`);
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            
+            // Look for "Available skills:" section (case insensitive)
+            if (line.toLowerCase().includes('available')) {
+                foundAvailableSection = true;
+                this.outputChannel.appendLine(`🔍 [PARSE] Found "Available" section on line ${i}: "${line}"`);
+                continue;
+            }
+            
+            // If we found the "Available" section, look for skill lines
+            if (foundAvailableSection) {
+                // Look for lines like "│    - skill-name"
+                const skillMatch = line.match(/│\s*-\s*([a-zA-Z0-9\-_]+)/);
+                if (skillMatch) {
+                    const skillName = skillMatch[1];
+                    if (!skills.includes(skillName)) {
+                        skills.push(skillName);
+                        this.outputChannel.appendLine(`🔍 [PARSE] Found skill: ${skillName}`);
+                    }
+                }
+            }
+        }
+        
+        this.outputChannel.appendLine(`🔍 [PARSE] Final result: ${skills.length} skills found: [${skills.join(', ')}]`);
+        return skills;
     }
 
     private async runCommand(command: string, cwd?: string): Promise<{ stdout: string, stderr: string }> {

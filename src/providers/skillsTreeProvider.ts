@@ -18,11 +18,23 @@ export class SkillTreeItem extends vscode.TreeItem {
                 skill.description;
             this.contextValue = 'skill';
             
-            // Set icon based on skill status
+            // Set icon and command based on skill status
             if ('installed' in skill && skill.installed) {
+                // INSTALLED SKILL - Green check with uninstall command
                 this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
+                this.command = {
+                    command: 'skills.skill.uninstall',
+                    title: 'Uninstall Skill',
+                    arguments: [skill]
+                };
             } else {
+                // AVAILABLE SKILL - Blue download with install command  
                 this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('charts.blue'));
+                this.command = {
+                    command: 'skills.skill.install',
+                    title: 'Install Skill',
+                    arguments: [skill]
+                };
             }
         } else if (type === 'section') {
             if (label.includes('Installed')) {
@@ -255,10 +267,17 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
                         // Skip skills that are already installed
                         const isInstalled = this.installedSkills.some(installed => installed.name === skill.name);
                         if (!isInstalled) {
+                            // Add repository info to skill for install command
+                            const skillWithRepo = {
+                                ...skill,
+                                repository: repoSkills.repository.url,
+                                skillName: skill.name // Ensure skillName is available for CLI
+                            };
+                            
                             items.push(new SkillTreeItem(
                                 skill.name,
                                 vscode.TreeItemCollapsibleState.None,
-                                skill
+                                skillWithRepo
                             ));
                         }
                     }
