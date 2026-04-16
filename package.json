@@ -142,9 +142,24 @@
           "group": "3_actions"
         },
         {
+          "command": "skills.skill.install",
+          "when": "view == skills.tree && viewItem == available-skill",
+          "group": "1_actions"
+        },
+        {
           "command": "skills.repository.remove",
           "when": "view == skills.repositories && viewItem == repository",
           "group": "1_actions"
+        },
+        {
+          "command": "skills.skill.uninstall",
+          "when": "view == skills.tree && viewItem == skill",
+          "group": "inline"
+        },
+        {
+          "command": "skills.skill.install",
+          "when": "view == skills.tree && viewItem == available-skill",
+          "group": "inline"
         }
       ]
     },

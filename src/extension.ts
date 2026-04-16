@@ -471,7 +471,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 // Show scope selection dialog
                 const scopeOptions = [
                     {
-                        label: '🏠 Local (Project only)',
+                        label: '🏠 This repo (Project only)',
                         description: 'Install this skill for current project only',
                         detail: 'Skill will be available only in this workspace',
                         scope: 'local' as const
@@ -483,8 +483,8 @@ export async function activate(context: vscode.ExtensionContext) {
                         scope: 'global' as const
                     },
                     {
-                        label: '🔄 Both (Local + Global)',
-                        description: 'Install in both local and global scopes',
+                        label: '🔄 Both (This repo + Global)',
+                        description: 'Install in both this repository and global scopes',
                         detail: 'Maximum availability - install everywhere',
                         scope: 'both' as const
                     }

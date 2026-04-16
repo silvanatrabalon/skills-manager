@@ -34,6 +34,7 @@ export class SkillTreeItem extends vscode.TreeItem {
             // Set icon and command based on skill status
             if ('installed' in skill && skill.installed) {
                 // INSTALLED SKILL - Green check with uninstall command
+                this.contextValue = 'skill';
                 this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
                 this.command = {
                     command: 'skills.skill.uninstall',
@@ -42,6 +43,7 @@ export class SkillTreeItem extends vscode.TreeItem {
                 };
             } else {
                 // AVAILABLE SKILL - Blue download with install command  
+                this.contextValue = 'available-skill';
                 this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('charts.blue'));
                 this.command = {
                     command: 'skills.skill.install',
@@ -234,13 +236,13 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
             
             const items = [
                 new SkillTreeItem(
-                    `📊 Installed Skills (${totalInstalled})`,
+                    `Installed Skills (${totalInstalled})`,
                     totalInstalled > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None,
                     undefined,
                     'section'
                 ),
                 new SkillTreeItem(
-                    `📦 Available Skills (${availableCount})`,
+                    `Available Skills (${availableCount})`,
                     availableCount > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
                     undefined,
                     'section'
@@ -276,7 +278,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
             
             if (localCount > 0) {
                 sections.push(new SkillTreeItem(
-                    `🏠 Local (${localCount})`,
+                    `This repo (${localCount})`,
                     vscode.TreeItemCollapsibleState.Expanded,
                     undefined,
                     'local-section'
@@ -285,7 +287,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
             
             if (globalCount > 0) {
                 sections.push(new SkillTreeItem(
-                    `🌍 Global (${globalCount})`,
+                    `Global (${globalCount})`,
                     vscode.TreeItemCollapsibleState.Expanded,
                     undefined,
                     'global-section'
