@@ -462,8 +462,11 @@ export async function activate(context: vscode.ExtensionContext) {
         const skillInstallCommand = vscode.commands.registerCommand('skills.skill.install', async (skillItem: any) => {
             try {
                 console.log('🚀 [Install] Installing skill:', skillItem);
-                const skillName = skillItem.skillName || skillItem.name;
-                const repository = skillItem.repository;
+                
+                // Extract data from TreeItem if needed
+                const skill = skillItem.skill || skillItem;
+                const skillName = skill.skillName || skill.name || skillItem.label;
+                const repository = skill.repository || skill.source;
                 
                 if (!skillName || !repository) {
                     vscode.window.showErrorMessage('Missing skill name or repository info');
@@ -494,7 +497,10 @@ export async function activate(context: vscode.ExtensionContext) {
         const skillUninstallCommand = vscode.commands.registerCommand('skills.skill.uninstall', async (skillItem: any) => {
             try {
                 console.log('🗑️ [Uninstall] Uninstalling skill:', skillItem);
-                const skillName = skillItem.name || skillItem.skillName;
+                
+                // Extract data from TreeItem if needed
+                const skill = skillItem.skill || skillItem;
+                const skillName = skill.name || skill.skillName || skillItem.label;
                 
                 if (!skillName) {
                     vscode.window.showErrorMessage('Missing skill name');
@@ -533,19 +539,43 @@ export async function activate(context: vscode.ExtensionContext) {
         const skillShowDetailsCommand = vscode.commands.registerCommand('skills.skill.showDetails', async (skillItem: any) => {
             try {
                 console.log('ℹ️ [Details] Showing skill details for:', skillItem);
+                console.log('ℹ️ [Details] skillItem keys:', Object.keys(skillItem || {}));
+                console.log('ℹ️ [Details] skillItem.skill:', skillItem?.skill);
+                console.log('ℹ️ [Details] skillItem.fullDescription:', skillItem?.fullDescription);
                 
-                const skillName = skillItem.name || skillItem.skillName;
-                const description = skillItem.description || 'No description available';
-                const fullDescription = skillItem.fullDescription || description;
-                const source = skillItem.source || 'Unknown source';
-                const isInstalled = 'installed' in skillItem && skillItem.installed;
+                const skillName = skillItem?.name || skillItem?.skillName || skillItem?.label || 'Unknown Skill';
+                const description = skillItem?.description || 'No description available';
+                
+                // Get full description from TreeItem if available, otherwise from skill object
+                let fullDescription = skillItem?.fullDescription || 
+                                    skillItem?.skill?.fullDescription || 
+                                    skillItem?.skill?.description ||
+                                    description;
+                
+                // If still truncated, try to get from the original skill data
+                if (fullDescription.endsWith('...')) {
+                    fullDescription = skillItem?.skill?.fullDescription || 
+                                    skillItem?.skill?.description || 
+                                    fullDescription;
+                }
+                
+                const source = skillItem?.source || skillItem?.skill?.source || skillItem?.repository || 'Unknown source';
+                const isInstalled = ('installed' in skillItem && skillItem.installed) || 
+                                  (skillItem?.skill && 'installed' in skillItem.skill && skillItem.skill.installed) || 
+                                  false;
+                                  
+                console.log('ℹ️ [Details] Final fullDescription:', fullDescription);
+                console.log('ℹ️ [Details] Description length:', fullDescription.length);
                 
                 // Show in a webview panel for better formatting
                 const panel = vscode.window.createWebviewPanel(
                     'skillDetails',
                     `Skill: ${skillName}`,
                     vscode.ViewColumn.Beside,
-                    { enableCommandUris: true }
+                    { 
+                        enableCommandUris: true,
+                        retainContextWhenHidden: true
+                    }
                 );
                 
                 panel.webview.html = `
@@ -558,71 +588,149 @@ export async function activate(context: vscode.ExtensionContext) {
                         <style>
                             body { 
                                 font-family: var(--vscode-font-family);
-                                padding: 20px;
-                                line-height: 1.6;
+                                padding: 8px;
+                                line-height: 1.3;
                                 color: var(--vscode-foreground);
                                 background: var(--vscode-editor-background);
+                                margin: 0;
+                                height: 100vh;
+                                box-sizing: border-box;
+                                overflow-y: auto;
                             }
-                            h1 { color: var(--vscode-textBlockQuote-background); }
+                            .container {
+                                max-width: 100%;
+                                height: 100%;
+                                display: flex;
+                                flex-direction: column;
+                            }
+                            h1 { 
+                                color: var(--vscode-textLink-foreground); 
+                                margin-top: 0;
+                                word-wrap: break-word;
+                            }
                             .status { 
                                 padding: 8px 12px;
                                 border-radius: 4px;
                                 background: var(--vscode-textBlockQuote-background);
                                 margin: 10px 0;
+                                font-weight: bold;
                             }
                             .source { 
                                 background: var(--vscode-textCodeBlock-background);
                                 padding: 4px 8px;
                                 border-radius: 3px;
                                 font-family: var(--vscode-editor-font-family);
+                                font-size: 0.9em;
+                                word-break: break-all;
                             }
                             .description {
                                 margin: 15px 0;
-                                padding: 15px;
+                                padding: 8px;
                                 border-left: 4px solid var(--vscode-textBlockQuote-border);
                                 background: var(--vscode-textBlockQuote-background);
+                                border-radius: 4px;
+                                flex-grow: 1;
+                                overflow-y: auto;
+                                max-height: 60vh;
+                                word-wrap: break-word;
+                                white-space: pre-wrap;
+                            }
+                            .description-content {
+                                line-height: 1.5;
                             }
                             .actions {
-                                margin-top: 20px;
-                                padding-top: 20px;
+                                margin-top: 8px;
+                                padding-top: 8px;
                                 border-top: 1px solid var(--vscode-textBlockQuote-border);
+                                flex-shrink: 0;
                             }
                             button {
                                 background: var(--vscode-button-background);
                                 color: var(--vscode-button-foreground);
                                 border: none;
-                                padding: 8px 16px;
+                                padding: 6px 12px;
                                 border-radius: 4px;
                                 cursor: pointer;
-                                margin-right: 10px;
+                                margin-right: 6px;
+                                font-size: 14px;
+                                font-weight: 500;
                             }
                             button:hover {
                                 background: var(--vscode-button-hoverBackground);
                             }
+                            .metadata {
+                                display: flex;
+                                gap: 20px;
+                                margin: 15px 0;
+                                flex-wrap: wrap;
+                            }
+                            .metadata-item {
+                                display: flex;
+                                flex-direction: column;
+                                min-width: 200px;
+                            }
+                            .metadata-label {
+                                font-weight: bold;
+                                margin-bottom: 5px;
+                                color: var(--vscode-textLink-foreground);
+                            }
                         </style>
                     </head>
                     <body>
-                        <h1>${skillName}</h1>
-                        <div class="status">${isInstalled ? '✅ Installed' : '📦 Available for installation'}</div>
-                        <p><strong>Source:</strong> <span class="source">${source}</span></p>
-                        <div class="description">
-                            <strong>Description:</strong><br>
-                            ${fullDescription.replace(/\n/g, '<br>')}
-                        </div>
-                        <div class="actions">
-                            ${!isInstalled ? 
-                                `<button onclick="installSkill()">Install Skill</button>` : 
-                                `<button onclick="uninstallSkill()">Uninstall Skill</button>`
-                            }
+                        <div class="container">
+                            <h1>${skillName}</h1>
+                            <div class="status">${isInstalled ? '✅ Installed' : '📦 Available for installation'}</div>
+                            
+                            <div class="metadata">
+                                <div class="metadata-item">
+                                    <div class="metadata-label">Source:</div>
+                                    <span class="source">${source}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="description">
+                                <div class="metadata-label">Description:</div>
+                                <div class="description-content">${fullDescription}</div>
+                            </div>
+                            
+                            <div class="actions">
+                                ${!isInstalled ? 
+                                    `<button onclick="installSkill()">📥 Install Skill</button>` : 
+                                    `<button onclick="uninstallSkill()" style="background: var(--vscode-errorForeground); color: white;">🗑️ Uninstall Skill</button>`
+                                }
+                                <button onclick="refreshData()" style="background: var(--vscode-textLink-foreground);">🔄 Refresh</button>
+                            </div>
                         </div>
                         <script>
                             const vscode = acquireVsCodeApi();
+                            
+                            // Prepare skill object for messages 
+                            const skillData = ${JSON.stringify({
+                                name: skillName,
+                                skillName: skillName,
+                                repository: source,
+                                source: source,
+                                description: fullDescription,
+                                fullDescription: fullDescription,
+                                installed: isInstalled
+                            })};
+                            
                             function installSkill() {
-                                vscode.postMessage({ command: 'install', skill: ${JSON.stringify(skillItem)} });
+                                vscode.postMessage({ command: 'install', skill: skillData });
                             }
                             function uninstallSkill() {
-                                vscode.postMessage({ command: 'uninstall', skill: ${JSON.stringify(skillItem)} });
+                                if (confirm('Are you sure you want to uninstall this skill?')) {
+                                    vscode.postMessage({ command: 'uninstall', skill: skillData });
+                                }
                             }
+                            function refreshData() {
+                                vscode.postMessage({ command: 'refresh' });
+                            }
+                            
+                            // Auto-focus on load for better UX
+                            window.addEventListener('load', () => {
+                                document.body.focus();
+                            });
                         </script>
                     </body>
                     </html>
@@ -634,9 +742,15 @@ export async function activate(context: vscode.ExtensionContext) {
                         switch (message.command) {
                             case 'install':
                                 await vscode.commands.executeCommand('skills.skill.install', message.skill);
+                                panel.dispose(); // Close panel after install
                                 break;
                             case 'uninstall':
                                 await vscode.commands.executeCommand('skills.skill.uninstall', message.skill);
+                                panel.dispose(); // Close panel after uninstall
+                                break;
+                            case 'refresh':
+                                await vscode.commands.executeCommand('skills.refresh');
+                                vscode.window.showInformationMessage('Skills refreshed!');
                                 break;
                         }
                     },

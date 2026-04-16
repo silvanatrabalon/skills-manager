@@ -3,6 +3,8 @@ import { SkillsService, SkillWithRepository, RepositorySkills } from '../service
 import { SkillSearchResult, SkillWithDetails } from '../services/cliWrapper';
 
 export class SkillTreeItem extends vscode.TreeItem {
+    public readonly fullDescription?: string;  // Store full description separately
+    
     constructor(
         public readonly label: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
@@ -16,10 +18,13 @@ export class SkillTreeItem extends vscode.TreeItem {
             const fullDescription = ('fullDescription' in skill && skill.fullDescription) ? 
                 skill.fullDescription : skill.description;
             
+            // Store the full description in the TreeItem
+            this.fullDescription = fullDescription;
+            
             this.tooltip = new vscode.MarkdownString(`**${skill.name}**\n\n${fullDescription}`);
             this.tooltip.isTrusted = true;
             
-            // Truncated description for display
+            // Truncated description for display in tree only
             this.description = fullDescription.length > 60 ? 
                 fullDescription.substring(0, 57) + '...' : 
                 fullDescription;
@@ -33,7 +38,7 @@ export class SkillTreeItem extends vscode.TreeItem {
                 this.command = {
                     command: 'skills.skill.uninstall',
                     title: 'Uninstall Skill',
-                    arguments: [skill]
+                    arguments: [this]  // Pass TreeItem instead of just skill
                 };
             } else {
                 // AVAILABLE SKILL - Blue download with install command  
@@ -41,7 +46,7 @@ export class SkillTreeItem extends vscode.TreeItem {
                 this.command = {
                     command: 'skills.skill.install',
                     title: 'Install Skill',
-                    arguments: [skill]
+                    arguments: [this]  // Pass TreeItem instead of just skill
                 };
             }
         } else if (type === 'section') {
