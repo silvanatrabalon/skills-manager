@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { SkillsService, RepositorySkills } from '../../services/skillsService';
+import { SkillsService } from '../../services/skillsService';
 
 export class SkillsExplorerWebview {
     private panel: vscode.WebviewPanel | undefined;

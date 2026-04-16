@@ -1,21 +1,16 @@
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import * as https from 'https';
 import { SkillsService } from './services/skillsService';
 import { SkillsTreeProvider } from './providers/skillsTreeProvider';
 import { SkillsCliService } from './services/cliWrapper';
 
-const execAsync = promisify(exec);
-
-// GitHub API service to discover available skills
 class GitHubService {
-    constructor(private configService: ConfigService) {}
+    constructor(private _configService: ConfigService) {}
 
     async getRepositoryContents(repoUrl: string, path: string = ''): Promise<any[]> {
         return new Promise((resolve, reject) => {
             try {
-                const token = this.configService.getGitHubToken();
+                const token = this._configService.getGitHubToken();
                 
                 if (!token) {
                     reject(new Error('GitHub token not configured'));
@@ -238,7 +233,7 @@ class RepositoryTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem>
         return element;
     }
 
-    async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+    async getChildren(_element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
         const repositories = await this.configService.getRepositories();
         
         if (repositories.length === 0) {
@@ -416,9 +411,9 @@ export async function activate(context: vscode.ExtensionContext) {
                 placeHolder: 'ghp_xxxxxxxxxxxxxxxxxxxx',
                 ignoreFocusOut: true,
                 validateInput: (value) => {
-                    if (!value) return 'Token is required';
-                    if (!value.startsWith('ghp_')) return 'Token should start with ghp_';
-                    if (value.length < 10) return 'Token seems too short';
+                    if (!value) {return 'Token is required';}
+                    if (!value.startsWith('ghp_')) {return 'Token should start with ghp_';}
+                    if (value.length < 10) {return 'Token seems too short';}
                     return undefined;
                 }
             });
@@ -473,15 +468,99 @@ export async function activate(context: vscode.ExtensionContext) {
                     return;
                 }
 
-                // Use skillsService.installSkill instead of direct terminal command
-                // This ensures we get --agent '*' and --yes for non-interactive install
-                console.log(`🚀 [Install] Calling skillsService.installSkill with: ${repository}, ${skillName}`);
-                const result = await skillsService.installSkill(repository, skillName);
-                
-                if (result.success) {
-                    vscode.window.showInformationMessage(`Successfully installed skill: ${skillName}`);
+                // Show scope selection dialog
+                const scopeOptions = [
+                    {
+                        label: '🏠 Local (Project only)',
+                        description: 'Install this skill for current project only',
+                        detail: 'Skill will be available only in this workspace',
+                        scope: 'local' as const
+                    },
+                    {
+                        label: '🌍 Global (All projects)',
+                        description: 'Install this skill globally for all projects',
+                        detail: 'Skill will be available in all workspaces',
+                        scope: 'global' as const
+                    },
+                    {
+                        label: '🔄 Both (Local + Global)',
+                        description: 'Install in both local and global scopes',
+                        detail: 'Maximum availability - install everywhere',
+                        scope: 'both' as const
+                    }
+                ];
+
+                const selectedScope = await vscode.window.showQuickPick(scopeOptions, {
+                    title: `Install Skill: ${skillName}`,
+                    placeHolder: 'Choose installation scope...',
+                    ignoreFocusOut: true
+                });
+
+                if (!selectedScope) {
+                    return; // User cancelled
+                }
+
+                // Show agent selection dialog
+                const availableAgents = [
+                    { label: 'cursor', description: 'Cursor AI Assistant', checked: true },
+                    { label: 'github-copilot', description: 'GitHub Copilot', checked: false },
+                    { label: 'opencode', description: 'OpenCode Assistant', checked: false },
+                    { label: 'claude-code', description: 'Anthropic Claude', checked: false },
+                    { label: 'antigravity', description: 'Antigravity Assistant', checked: false },
+                    { label: 'codex', description: 'OpenAI Codex', checked: false }
+                ];
+
+                const selectedAgents = await vscode.window.showQuickPick(availableAgents, {
+                    title: `Select Target Agents for ${skillName}`,
+                    placeHolder: 'Choose which agents to install this skill for...',
+                    canPickMany: true,
+                    ignoreFocusOut: true
+                });
+
+                if (!selectedAgents || selectedAgents.length === 0) {
+                    vscode.window.showWarningMessage('No agents selected. Installation cancelled.');
+                    return;
+                }
+
+                const agentNames = selectedAgents.map(agent => agent.label);
+                console.log(`🚀 [Install] Selected agents: ${agentNames.join(', ')}`);
+
+                console.log(`🚀 [Install] Selected scope: ${selectedScope.scope}`);
+
+                // Execute installation based on selected scope
+                if (selectedScope.scope === 'both') {
+                    // Install both local and global
+                    const localResult = await skillsService.installSkill(repository, skillName, { 
+                        scope: 'project',
+                        agents: agentNames 
+                    });
+                    const globalResult = await skillsService.installSkill(repository, skillName, { 
+                        scope: 'global',
+                        agents: agentNames 
+                    });
+                    
+                    if (localResult.success && globalResult.success) {
+                        vscode.window.showInformationMessage(`✅ Successfully installed ${skillName} both locally and globally for ${agentNames.join(', ')}`);
+                    } else {
+                        const errors = [];
+                        if (!localResult.success) {errors.push(`Local: ${localResult.message}`);}
+                        if (!globalResult.success) {errors.push(`Global: ${globalResult.message}`);}
+                        vscode.window.showErrorMessage(`❌ Partial failure installing ${skillName}: ${errors.join(', ')}`);
+                    }
                 } else {
-                    vscode.window.showErrorMessage(`Failed to install skill: ${result.message}`);
+                    // Install single scope
+                    const scope = selectedScope.scope === 'local' ? 'project' : 'global';
+                    const result = await skillsService.installSkill(repository, skillName, { 
+                        scope,
+                        agents: agentNames 
+                    });
+                    
+                    if (result.success) {
+                        const scopeText = scope === 'project' ? 'locally' : 'globally';
+                        vscode.window.showInformationMessage(`✅ Successfully installed ${skillName} ${scopeText} for ${agentNames.join(', ')}`);
+                    } else {
+                        vscode.window.showErrorMessage(`❌ Failed to install ${skillName}: ${result.message}`);
+                    }
                 }
                 
                 // Refresh UI
@@ -780,6 +859,20 @@ export async function activate(context: vscode.ExtensionContext) {
             output.appendLine('\n🔄 Loading current skills data...');
             await skillsProvider.refreshAsync();
             
+            // Direct inspection of internal state
+            const internalState = (skillsProvider as any).installedSkills;
+            output.appendLine(`\n=== INSTALLED SKILLS INTERNAL STATE ===`);
+            output.appendLine(`Type of installedSkills: ${typeof internalState}`);
+            output.appendLine(`Is array?: ${Array.isArray(internalState)}`);
+            output.appendLine(`Has local?: ${Object.prototype.hasOwnProperty.call(internalState, 'local')}`);
+            output.appendLine(`Has global?: ${Object.prototype.hasOwnProperty.call(internalState, 'global')}`);
+            output.appendLine(`local length: ${internalState?.local?.length}`);
+            output.appendLine(`global length: ${internalState?.global?.length}`);
+            output.appendLine(`local content: ${JSON.stringify(internalState?.local?.map((s: any) => s.name))}`);
+            output.appendLine(`global content: ${JSON.stringify(internalState?.global?.map((s: any) => s.name))}`);
+            output.appendLine(`installedCount getter: ${skillsProvider.installedCount}`);
+            output.appendLine(`=== END INTERNAL STATE ===\n`);
+            
             output.appendLine(`Available skills: ${skillsProvider.availableCount}`);
             output.appendLine(`Installed skills: ${skillsProvider.installedCount}`);
             
@@ -875,11 +968,34 @@ export async function activate(context: vscode.ExtensionContext) {
             output.show();
             vscode.window.showInformationMessage('CLI test complete - check output panel');
         });
+
+        const showExplorerCommand = vscode.commands.registerCommand('skills.explorer.show', async () => {
+            try {
+                // Show Skills tree view in sidebar
+                await vscode.commands.executeCommand('workbench.view.extension.skills-sidebar');
+                vscode.window.showInformationMessage('Skills Explorer opened!');
+            } catch (error: any) {
+                console.error('Error showing skills explorer:', error);
+                vscode.window.showErrorMessage(`Failed to show Skills Explorer: ${error.message}`);
+            }
+        });
+
+        const interactiveInstallCommand = vscode.commands.registerCommand('skills.install.interactive', async () => {
+            try {
+                // Trigger the same logic as the install button in available skills
+                await vscode.commands.executeCommand('skills.refresh');
+                vscode.window.showInformationMessage('Use the Skills tree view to browse and install skills!');
+            } catch (error: any) {
+                console.error('Error in interactive install:', error);
+                vscode.window.showErrorMessage(`Failed to start interactive install: ${error.message}`);
+            }
+        });
         
         // Add subscriptions
         context.subscriptions.push(
             skillsTreeView,
             repositoryTreeView,
+            configurationTreeView,
             refreshCommand,
             addRepoCommand,
             showDebugCommand,
@@ -892,7 +1008,9 @@ export async function activate(context: vscode.ExtensionContext) {
             skillUninstallCommand,
             skillShowDetailsCommand,
             debugEnvironmentCommand,
-            testCliCommand
+            testCliCommand,
+            showExplorerCommand,
+            interactiveInstallCommand
         );
         
         // Show message after a small delay
@@ -917,7 +1035,7 @@ async function addRepositoryInteractive(configService: ConfigService, repoProvid
             placeHolder: 'Select repository type'
         });
 
-        if (!repoType) return;
+        if (!repoType) {return;}
 
         // Step 2: Repository name
         const name = await vscode.window.showInputBox({
@@ -925,7 +1043,7 @@ async function addRepositoryInteractive(configService: ConfigService, repoProvid
             placeholder: 'e.g., "My Skills", "Company Skills"'
         });
 
-        if (!name) return;
+        if (!name) {return;}
 
         let url: string | undefined;
 
@@ -938,7 +1056,7 @@ async function addRepositoryInteractive(configService: ConfigService, repoProvid
                 openLabel: 'Select Skills Directory'
             });
             
-            if (!folders || folders.length === 0) return;
+            if (!folders || folders.length === 0) {return;}
             url = folders[0].fsPath;
         } else {
             url = await vscode.window.showInputBox({
@@ -948,7 +1066,7 @@ async function addRepositoryInteractive(configService: ConfigService, repoProvid
                     : 'https://gitlab.com/username/repository'
             });
 
-            if (!url) return;
+            if (!url) {return;}
         }
 
         // Create repository object

@@ -8,8 +8,8 @@ interface RepositoryTypeQuickPickItem extends vscode.QuickPickItem {
 
 export class RepositoryCommands {
     constructor(
-        private configService: ConfigService,
-        private repositoryProvider: RepositoryProvider
+        private _configService: ConfigService,
+        private _repositoryProvider: RepositoryProvider
     ) {}
 
     async addRepository(): Promise<void> {
@@ -238,12 +238,13 @@ export class RepositoryCommands {
                     }
                 }
                 break;
-            case 'gitlab':
+            case 'gitlab': {
                 const gitlabUrlPattern = /^https?:\/\/[^\/]+\/[^\/]+\/[^\/]+/;
                 if (!gitlabUrlPattern.test(url)) {
                     return 'Invalid GitLab URL format';
                 }
                 break;
+            }
             case 'local':
                 if (url.length < 2) {
                     return 'Path too short';

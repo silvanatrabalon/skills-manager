@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SkillsCliService, Skill, SkillSearchResult, SkillWithDetails, InstallResult, UpdateResult, RemoveResult } from './cliWrapper';
+import { SkillsCliService, Skill, SkillSearchResult, InstallResult, UpdateResult, RemoveResult } from './cliWrapper';
 import { ConfigService, Repository } from './configService';
 
 export interface SkillWithRepository extends Skill {
@@ -75,6 +75,45 @@ export class SkillsService {
             this.outputChannel.appendLine(`📋 [SkillsService] Error getting installed skills: ${error}`);
             this.outputChannel.show();
             return [];
+        }
+    }
+
+    // Get installed skills organized by scope for tree display
+    async getInstalledSkillsByScope(): Promise<{ local: SkillWithRepository[], global: SkillWithRepository[] }> {
+        this.outputChannel.appendLine('📋 [SkillsService] Getting installed skills by scope...');
+        
+        try {
+            const { local, global } = await this.cliService.listSkillsByScope();
+            this.outputChannel.appendLine(`📋 [SkillsService] CLI returned - Local: ${local.length}, Global: ${global.length}`);
+            
+            // Get repositories for context (await needed - async method)
+            const repositories = await this.configService.getRepositories();
+            
+            // Process local skills
+            const localWithRepos = local.map(skill => {
+                const repository = repositories.find(repo => 
+                    skill.source?.includes(repo.url) || skill.source?.includes(repo.name)
+                );
+                return { ...skill, repository };
+            });
+            
+            // Process global skills
+            const globalWithRepos = global.map(skill => {
+                const repository = repositories.find(repo => 
+                    skill.source?.includes(repo.url) || skill.source?.includes(repo.name)
+                );
+                return { ...skill, repository };
+            });
+            
+            this.outputChannel.appendLine(`📋 [SkillsService] Processed skills - Local: ${localWithRepos.length}, Global: ${globalWithRepos.length}`);
+            
+            return {
+                local: localWithRepos,
+                global: globalWithRepos
+            };
+        } catch (error) {
+            this.outputChannel.appendLine(`❌ [SkillsService] Error getting installed skills by scope: ${error}`);
+            return { local: [], global: [] };
         }
     }
 
@@ -156,9 +195,8 @@ export class SkillsService {
         const scope = options.scope || this.configService.getDefaultScope();
         this.outputChannel.appendLine(`🚀 [INSTALL] scope: ${scope}`);
         
-        // Install only to specific agents that are available  
-        // This avoids the interactive agent selection prompt and agents not found errors
-        const agents = ['cursor'];
+        // Use agents from options or fallback to default
+        const agents = options.agents || ['cursor'];
         this.outputChannel.appendLine(`🚀 [INSTALL] agents: ${JSON.stringify(agents)}`);
         
         // Convert repository URL to proper CLI format

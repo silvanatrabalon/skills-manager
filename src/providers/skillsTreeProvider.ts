@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { SkillsService, SkillWithRepository, RepositorySkills } from '../services/skillsService';
-import { SkillSearchResult, SkillWithDetails } from '../services/cliWrapper';
+import { SkillSearchResult } from '../services/cliWrapper';
 
 export class SkillTreeItem extends vscode.TreeItem {
     public readonly fullDescription?: string;  // Store full description separately
@@ -9,7 +9,7 @@ export class SkillTreeItem extends vscode.TreeItem {
         public readonly label: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly skill?: SkillWithRepository | SkillSearchResult,
-        public readonly type: 'section' | 'skill' = 'skill'
+        public readonly type: 'section' | 'skill' | 'local-section' | 'global-section' = 'skill'
     ) {
         super(label, collapsibleState);
         
@@ -51,11 +51,17 @@ export class SkillTreeItem extends vscode.TreeItem {
             }
         } else if (type === 'section') {
             if (label.includes('Installed')) {
-                this.iconPath = new vscode.ThemeIcon('check-all');
+                this.iconPath = new vscode.ThemeIcon('symbol-folder');
             } else {
                 this.iconPath = new vscode.ThemeIcon('cloud');
             }
             this.contextValue = 'section';
+        } else if (type === 'local-section') {
+            this.iconPath = new vscode.ThemeIcon('home', new vscode.ThemeColor('charts.blue'));
+            this.contextValue = 'local-section';
+        } else if (type === 'global-section') {
+            this.iconPath = new vscode.ThemeIcon('globe', new vscode.ThemeColor('charts.green'));
+            this.contextValue = 'global-section';
         }
     }
 }
@@ -64,7 +70,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     private _onDidChangeTreeData: vscode.EventEmitter<SkillTreeItem | undefined | null | void> = new vscode.EventEmitter<SkillTreeItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<SkillTreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
 
-    private installedSkills: SkillWithRepository[] = [];
+    private installedSkills: { local: SkillWithRepository[], global: SkillWithRepository[] } = { local: [], global: [] };
     private availableSkills: RepositorySkills[] = [];
     private outputChannel: vscode.OutputChannel;
 
@@ -72,10 +78,10 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
         console.log('�️  [SkillsTreeProvider] Constructor called');
         this.outputChannel = vscode.window.createOutputChannel('Skills Tree Provider Debug');
         
-        // Initialize arrays as empty
-        this.installedSkills = [];
+        // Initialize arrays as empty with new scope structure
+        this.installedSkills = { local: [], global: [] };
         this.availableSkills = [];
-        console.log('🏗️  [SkillsTreeProvider] Constructor complete - arrays initialized as empty');
+        console.log('🏗️  [SkillsTreeProvider] Constructor complete - arrays initialized as empty with scope structure');
     }
     
     // Call this AFTER tree view is registered
@@ -87,7 +93,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
             await this.loadSkills();
             
             console.log('🚀 [TreeProvider] Skills loaded successfully!');
-            console.log('🚀 [TreeProvider] Final installedSkills.length:', this.installedSkills?.length || 0);
+            console.log('🚀 [TreeProvider] Final installedSkills total:', (this.installedSkills?.local.length || 0) + (this.installedSkills?.global.length || 0));
             console.log('🚀 [TreeProvider] Final availableSkills.length:', this.availableSkills?.length || 0);
             console.log('🚀 [TreeProvider] Firing tree change event...');
             
@@ -108,7 +114,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
         this.loadSkills().then(() => {
             console.log('🔄 [SkillsTreeProvider] Load complete, firing tree data change');
             console.log('🔄 [SkillsTreeProvider] Current counts:', {
-                installed: this.installedSkills.length,
+                installed: this.installedSkills.local.length + this.installedSkills.global.length,
                 available: this.availableSkills.length
             });
             
@@ -130,7 +136,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
         await this.loadSkills();
         console.log('🔄 [SkillsTreeProvider] Async load complete, firing tree data change');
         console.log('🔄 [SkillsTreeProvider] Final counts:', {
-            installed: this.installedSkills.length,
+            installed: this.installedSkills.local.length + this.installedSkills.global.length,
             available: this.availableSkills.length
         });
         this.outputChannel.appendLine('🔄 [TreeProvider] About to fire tree data change event');
@@ -172,19 +178,21 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     private async loadSkills(): Promise<void> {
         console.log('� [SkillsTreeProvider] Loading skills...');
         
-        // Load installed skills
+        // Load installed skills by scope
         try {
-            console.log('💾 [TreeProvider] Calling getInstalledSkills...');
-            const installed = await this.skillsService.getInstalledSkills();
-            console.log('💾 [TreeProvider] Received', installed.length, 'installed skills');
+            this.outputChannel.appendLine('💾 [TreeProvider] Calling getInstalledSkillsByScope...');
+            const installedByScope = await this.skillsService.getInstalledSkillsByScope();
+            this.outputChannel.appendLine(`💾 [TreeProvider] Received - Local: ${installedByScope.local.length}, Global: ${installedByScope.global.length}`);
+            this.outputChannel.appendLine(`💾 [TreeProvider] Local names: ${JSON.stringify(installedByScope.local.map(s => s.name))}`);
+            this.outputChannel.appendLine(`💾 [TreeProvider] Global names: ${JSON.stringify(installedByScope.global.map(s => s.name))}`);
             
-            this.installedSkills = installed;
-            console.log('💾 [TreeProvider] Assigned to this.installedSkills, length is now:', this.installedSkills.length);
-            console.log('✅ [TreeProvider] Installed skills loaded successfully - continuing...');
+            this.installedSkills = installedByScope;
+            this.outputChannel.appendLine(`💾 [TreeProvider] After assignment - local: ${this.installedSkills.local.length}, global: ${this.installedSkills.global.length}`);
+            this.outputChannel.appendLine('✅ [TreeProvider] Installed skills loaded successfully');
             
         } catch (error) {
             console.error('❌ [TreeProvider] Error loading installed skills:', error);
-            this.installedSkills = [];
+            this.installedSkills = { local: [], global: [] };
         }
         
         // Load available skills (Re-enabled with timeout fix)
@@ -214,23 +222,25 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     }
 
     private getRootItems(): SkillTreeItem[] {
-        console.log('📋 [TreeProvider] getRootItems - installedSkills length:', this.installedSkills?.length || 0);
+        console.log('📋 [TreeProvider] getRootItems - Local skills:', this.installedSkills?.local?.length || 0, 'Global skills:', this.installedSkills?.global?.length || 0);
         
         try {
-            const installedCount = this.installedSkills?.length || 0;
+            const localCount = this.installedSkills?.local?.length || 0;
+            const globalCount = this.installedSkills?.global?.length || 0;
+            const totalInstalled = localCount + globalCount;
             const availableCount = (this.availableSkills || []).reduce((total, repo) => total + (repo.skills?.length || 0), 0);
             
-            console.log('📋 [TreeProvider] Creating items with counts:', { installed: installedCount, available: availableCount });
+            console.log('📋 [TreeProvider] Creating items with counts:', { local: localCount, global: globalCount, available: availableCount });
             
             const items = [
                 new SkillTreeItem(
-                    `Installed (${installedCount})`,
-                    installedCount > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None,
+                    `📊 Installed Skills (${totalInstalled})`,
+                    totalInstalled > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None,
                     undefined,
                     'section'
                 ),
                 new SkillTreeItem(
-                    `Available (${availableCount})`,
+                    `📦 Available Skills (${availableCount})`,
                     availableCount > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
                     undefined,
                     'section'
@@ -248,23 +258,62 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     }
 
     private getChildItems(element: SkillTreeItem): SkillTreeItem[] {
-        if (element.type !== 'section') {
+        const sectionTypes = ['section', 'local-section', 'global-section'];
+        if (!element.type || !sectionTypes.includes(element.type)) {
             return [];
         }
 
         if (element.label.includes('Installed')) {
-            // Show installed skills
-            if (this.installedSkills.length === 0) {
+            // Show Local and Global subsections
+            const localCount = this.installedSkills?.local?.length || 0;
+            const globalCount = this.installedSkills?.global?.length || 0;
+            
+            if (localCount === 0 && globalCount === 0) {
                 return [new SkillTreeItem('No skills installed', vscode.TreeItemCollapsibleState.None)];
             }
             
-            return this.installedSkills.map(skill => 
+            const sections = [];
+            
+            if (localCount > 0) {
+                sections.push(new SkillTreeItem(
+                    `🏠 Local (${localCount})`,
+                    vscode.TreeItemCollapsibleState.Expanded,
+                    undefined,
+                    'local-section'
+                ));
+            }
+            
+            if (globalCount > 0) {
+                sections.push(new SkillTreeItem(
+                    `🌍 Global (${globalCount})`,
+                    vscode.TreeItemCollapsibleState.Expanded,
+                    undefined,
+                    'global-section'
+                ));
+            }
+            
+            return sections;
+            
+        } else if (element.type === 'local-section') {
+            // Show local skills
+            return (this.installedSkills?.local || []).map(skill => 
                 new SkillTreeItem(
                     skill.name,
                     vscode.TreeItemCollapsibleState.None,
                     skill
                 )
             );
+            
+        } else if (element.type === 'global-section') {
+            // Show global skills
+            return (this.installedSkills?.global || []).map(skill => 
+                new SkillTreeItem(
+                    skill.name,
+                    vscode.TreeItemCollapsibleState.None,
+                    skill
+                )
+            );
+            
         } else if (element.label.includes('Available')) {
             // Show available skills from all repositories
             const items: SkillTreeItem[] = [];
@@ -277,9 +326,11 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
                     ));
                 } else {
                     for (const skill of repoSkills.skills) {
-                        // Skip skills that are already installed
-                        const isInstalled = this.installedSkills.some(installed => installed.name === skill.name);
-                        if (!isInstalled) {
+                        // Skip skills that are already installed in either scope
+                        const isInstalledLocal = this.installedSkills.local?.some(installed => installed.name === skill.name) || false;
+                        const isInstalledGlobal = this.installedSkills.global?.some(installed => installed.name === skill.name) || false;
+                        
+                        if (!isInstalledLocal && !isInstalledGlobal) {
                             // Add repository info to skill for install command
                             const skillWithRepo = {
                                 ...skill,
@@ -312,14 +363,18 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
         return element.skill;
     }
 
-    // Find specific skill
+    // Find specific skill in either local or global scope
     findSkill(skillName: string): SkillWithRepository | undefined {
-        return this.installedSkills.find(s => s.name === skillName);
+        const localSkill = this.installedSkills.local?.find(s => s.name === skillName);
+        if (localSkill) {return localSkill;}
+        
+        const globalSkill = this.installedSkills.global?.find(s => s.name === skillName);
+        return globalSkill;
     }
 
     // Get all installed skills
     getAllInstalledSkills(): SkillWithRepository[] {
-        return [...this.installedSkills];
+        return [...this.installedSkills.local, ...this.installedSkills.global];
     }
 
     // Get all available skills
@@ -329,7 +384,18 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     
     // Convenience getters for counts
     get installedCount(): number {
-        return this.installedSkills.length;
+        const localCount = this.installedSkills?.local?.length ?? 0;
+        const globalCount = this.installedSkills?.global?.length ?? 0;
+        const total = localCount + globalCount;
+        
+        console.log('📊 [TreeProvider] installedCount getter called:', {
+            local: localCount,
+            global: globalCount,
+            total: total,
+            installedSkills: this.installedSkills
+        });
+        
+        return total;
     }
     
     get availableCount(): number {
@@ -337,7 +403,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     }
     
     // Install skill method
-    async installSkill(skillName: string, repository: string, path?: string): Promise<void> {
+    async installSkill(skillName: string, repository: string, _path?: string): Promise<void> {
         try {
             console.log(`Installing skill: ${skillName} from ${repository}`);
             

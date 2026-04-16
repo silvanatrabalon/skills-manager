@@ -77,6 +77,7 @@ export class ValidationUtils {
         }
         
         // Remove dangerous characters and trim
+        // eslint-disable-next-line no-control-regex
         return input.replace(/[<>:"'|?*\x00-\x1f]/g, '').trim();
     }
 

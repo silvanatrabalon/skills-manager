@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { spawn, exec } from 'child_process';
+import { exec } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
@@ -209,6 +209,28 @@ export class SkillsCliService {
         }
     }
 
+    async listSkillsByScope(): Promise<{ local: Skill[], global: Skill[] }> {
+        try {
+            this.outputChannel.appendLine(`📋 [CLI] Listing skills by scope...`);
+            
+            // Get both local and global skills in parallel for better performance
+            const [localSkills, globalSkills] = await Promise.all([
+                this.listSkills('project'),
+                this.listSkills('global')
+            ]);
+
+            this.outputChannel.appendLine(`📋 [CLI] Found ${localSkills.length} local skills, ${globalSkills.length} global skills`);
+            
+            return {
+                local: localSkills,
+                global: globalSkills
+            };
+        } catch (error) {
+            this.outputChannel.appendLine(`❌ [CLI] Error listing skills by scope: ${(error as Error).message}`);
+            return { local: [], global: [] };
+        }
+    }
+
     async findSkills(query?: string, repository?: string): Promise<SkillSearchResult[]> {
         try {
             this.outputChannel.appendLine(`🔍 [CLI] Finding skills - query: ${query || 'none'}, repo: ${repository || 'none'}`);
@@ -379,44 +401,6 @@ export class SkillsCliService {
         return skills;
     }
     
-    // Parse skills list from CLI output
-    private parseSkillsList(output: string): string[] {
-        this.outputChannel.appendLine(`🔍 [PARSE] Starting parse of output (${output.length} chars)`);
-        
-        const skills: string[] = [];
-        const lines = output.split('\n');
-        let foundAvailableSection = false;
-        
-        this.outputChannel.appendLine(`🔍 [PARSE] Processing ${lines.length} lines`);
-        
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            
-            // Look for "Available skills:" section (case insensitive)
-            if (line.toLowerCase().includes('available')) {
-                foundAvailableSection = true;
-                this.outputChannel.appendLine(`🔍 [PARSE] Found "Available" section on line ${i}: "${line}"`);
-                continue;
-            }
-            
-            // If we found the "Available" section, look for skill lines
-            if (foundAvailableSection) {
-                // Look for lines like "│    - skill-name"
-                const skillMatch = line.match(/│\s*-\s*([a-zA-Z0-9\-_]+)/);
-                if (skillMatch) {
-                    const skillName = skillMatch[1];
-                    if (!skills.includes(skillName)) {
-                        skills.push(skillName);
-                        this.outputChannel.appendLine(`🔍 [PARSE] Found skill: ${skillName}`);
-                    }
-                }
-            }
-        }
-        
-        this.outputChannel.appendLine(`🔍 [PARSE] Final result: ${skills.length} skills found: [${skills.join(', ')}]`);
-        return skills;
-    }
-
     private async runCommand(command: string, cwd?: string): Promise<{ stdout: string, stderr: string }> {
         this.outputChannel.appendLine(`Running: ${command}`);
         
@@ -434,36 +418,23 @@ export class SkillsCliService {
         
         const fullPath = [process.env.PATH, ...extraPaths].filter(Boolean).join(':');
         
+        // Use workspace directory as default cwd for proper skills CLI operation
+        const defaultCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || homedir;
+        const executionCwd = cwd || defaultCwd;
+        
+        this.outputChannel.appendLine(`Executing in directory: ${executionCwd}`);
+        this.outputChannel.appendLine(`HOME directory: ${homedir}`);
+        
         const options: any = {
             shell: true,
-            env: { ...process.env, PATH: fullPath }
-        };
-        if (cwd) {
-            options.cwd = cwd;
-        }
-
-        try {
-            const result = await execAsync(command, options);
-            this.outputChannel.appendLine(`Output: ${result.stdout}`);
-            
-            if (result.stderr) {
-                this.outputChannel.appendLine(`Stderr: ${result.stderr}`);
+            cwd: executionCwd,
+            env: { 
+                ...process.env, 
+                PATH: fullPath,
+                HOME: homedir,  // Ensure HOME is properly set
+                DISABLE_TELEMETRY: 'true'  // Disable Skills CLI telemetry for privacy
             }
-            
-            return result;
-        } catch (error: any) {
-            this.outputChannel.appendLine(`Error: ${error.message}`);
-            throw error;
-        }
-    }
-
-    private async runDirectCommand(command: string, cwd?: string): Promise<{ stdout: string, stderr: string }> {
-        this.outputChannel.appendLine(`Running: ${command}`);
-        
-        const options: any = {};
-        if (cwd) {
-            options.cwd = cwd;
-        }
+        };
 
         try {
             const result = await execAsync(command, options);
@@ -482,11 +453,10 @@ export class SkillsCliService {
 
     private parseSkillsList(output: string): Skill[] {
         this.outputChannel.appendLine(`=== PARSING SKILLS LIST ===`);
-        this.outputChannel.appendLine(`Raw output: "${output}"`);
         
-        // First, clean ANSI color codes
+        // Clean ANSI color codes
+        // eslint-disable-next-line no-control-regex
         const cleanOutput = output.replace(/\x1b\[[0-9;]*m/g, '');
-        this.outputChannel.appendLine(`Cleaned output: "${cleanOutput}"`);
         
         const skills: Skill[] = [];
         const lines = cleanOutput.split('\n').filter(line => line.trim());
@@ -495,63 +465,46 @@ export class SkillsCliService {
         
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
-            this.outputChannel.appendLine(`Line ${i}: "${line}"`);
             
-            // Detect scope headers
-            if (line.toLowerCase().includes('project skills')) {
+            // Detect scope headers (exact match)
+            if (line.toLowerCase() === 'project skills') {
                 currentScope = 'project';
-                this.outputChannel.appendLine('  -> Found project section');
                 continue;
             }
-            
-            if (line.toLowerCase().includes('global skills')) {
+            if (line.toLowerCase() === 'global skills') {
                 currentScope = 'global';
-                this.outputChannel.appendLine('  -> Found global section');
                 continue;
             }
             
-            // Skip empty lines, headers, and messages
-            if (!line || 
-                line.includes('Skills') || 
-                line.includes('===') || 
-                line.includes('No ') ||
-                line.includes('Try listing') ||
-                line.startsWith('Agents:')) {
-                this.outputChannel.appendLine('  -> Skipping header/message line');
+            // Skip "No X found" and hint messages
+            if (line.startsWith('No ') || line.startsWith('Try listing')) {
                 continue;
             }
             
-            // Look for main skill lines (not indented and have a space indicating name + path)
-            if (!line.startsWith(' ') && line.includes(' ') && !line.includes(':')) {
-                const parts = line.split(' ');
-                if (parts.length >= 2) {
-                    const skillName = parts[0];
-                    const skillPath = parts.slice(1).join(' ');
-                    
-                    // Look ahead for agent info (indented line with "Agents:")
-                    let agents = 'Unknown';
-                    if (i + 1 < lines.length) {
-                        const nextLine = lines[i + 1].trim();
-                        if (nextLine.startsWith('Agents:')) {
-                            agents = nextLine.replace('Agents:', '').trim();
-                            i++; // Skip the agents line in next iteration
-                        }
-                    }
-                    
-                    const skill: Skill = {
-                        name: skillName,
-                        description: `Installed ${currentScope} skill`,
-                        source: skillPath,
-                        agent: agents,
-                        installed: true,
-                        scope: currentScope
-                    };
-                    
-                    skills.push(skill);
-                    this.outputChannel.appendLine(`  -> Parsed skill: ${skillName} (${currentScope}) - Agents: ${agents}`);
+            // Skill line format: "skill-name ~/path/to/skill"
+            // skill name is kebab-case, followed by a space, followed by the path
+            const match = line.match(/^([a-z0-9][a-z0-9\-]+)\s+(\S+)$/);
+            if (match) {
+                const skillName = match[1];
+                const skillPath = match[2];
+                
+                // Look ahead for "Agents:" line
+                let agents = 'Unknown';
+                if (i + 1 < lines.length && lines[i + 1].trim().startsWith('Agents:')) {
+                    agents = lines[i + 1].trim().replace('Agents:', '').trim();
+                    i++; // Skip the agents line
                 }
-            } else {
-                this.outputChannel.appendLine('  -> Skipping indented or malformed line');
+                
+                skills.push({
+                    name: skillName,
+                    description: `Installed ${currentScope} skill`,
+                    source: skillPath,
+                    agent: agents,
+                    installed: true,
+                    scope: currentScope
+                });
+                
+                this.outputChannel.appendLine(`  -> Parsed skill: ${skillName} (${currentScope}) - Agents: ${agents}`);
             }
         }
         
@@ -633,7 +586,7 @@ export class SkillsCliService {
                 continue;
             }
             
-            if (!inAvailableSection) continue;
+            if (!inAvailableSection) {continue;}
             
             // Skip the footer line
             if (line.includes('Use --skill')) {

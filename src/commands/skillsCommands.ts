@@ -13,8 +13,8 @@ interface AgentQuickPickItem extends vscode.QuickPickItem {
 
 export class SkillsCommands {
     constructor(
-        private skillsService: SkillsService,
-        private skillsTreeProvider: SkillsTreeProvider
+        private _skillsService: SkillsService,
+        private _skillsTreeProvider: SkillsTreeProvider
     ) {}
 
     async installInteractive(): Promise<void> {
