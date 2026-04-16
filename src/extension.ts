@@ -529,6 +529,127 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         });
 
+        // Comando específico para mostrar detalles del skill  
+        const skillShowDetailsCommand = vscode.commands.registerCommand('skills.skill.showDetails', async (skillItem: any) => {
+            try {
+                console.log('ℹ️ [Details] Showing skill details for:', skillItem);
+                
+                const skillName = skillItem.name || skillItem.skillName;
+                const description = skillItem.description || 'No description available';
+                const fullDescription = skillItem.fullDescription || description;
+                const source = skillItem.source || 'Unknown source';
+                const isInstalled = 'installed' in skillItem && skillItem.installed;
+                
+                // Show in a webview panel for better formatting
+                const panel = vscode.window.createWebviewPanel(
+                    'skillDetails',
+                    `Skill: ${skillName}`,
+                    vscode.ViewColumn.Beside,
+                    { enableCommandUris: true }
+                );
+                
+                panel.webview.html = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                        <title>Skill Details</title>
+                        <style>
+                            body { 
+                                font-family: var(--vscode-font-family);
+                                padding: 20px;
+                                line-height: 1.6;
+                                color: var(--vscode-foreground);
+                                background: var(--vscode-editor-background);
+                            }
+                            h1 { color: var(--vscode-textBlockQuote-background); }
+                            .status { 
+                                padding: 8px 12px;
+                                border-radius: 4px;
+                                background: var(--vscode-textBlockQuote-background);
+                                margin: 10px 0;
+                            }
+                            .source { 
+                                background: var(--vscode-textCodeBlock-background);
+                                padding: 4px 8px;
+                                border-radius: 3px;
+                                font-family: var(--vscode-editor-font-family);
+                            }
+                            .description {
+                                margin: 15px 0;
+                                padding: 15px;
+                                border-left: 4px solid var(--vscode-textBlockQuote-border);
+                                background: var(--vscode-textBlockQuote-background);
+                            }
+                            .actions {
+                                margin-top: 20px;
+                                padding-top: 20px;
+                                border-top: 1px solid var(--vscode-textBlockQuote-border);
+                            }
+                            button {
+                                background: var(--vscode-button-background);
+                                color: var(--vscode-button-foreground);
+                                border: none;
+                                padding: 8px 16px;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                margin-right: 10px;
+                            }
+                            button:hover {
+                                background: var(--vscode-button-hoverBackground);
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>${skillName}</h1>
+                        <div class="status">${isInstalled ? '✅ Installed' : '📦 Available for installation'}</div>
+                        <p><strong>Source:</strong> <span class="source">${source}</span></p>
+                        <div class="description">
+                            <strong>Description:</strong><br>
+                            ${fullDescription.replace(/\n/g, '<br>')}
+                        </div>
+                        <div class="actions">
+                            ${!isInstalled ? 
+                                `<button onclick="installSkill()">Install Skill</button>` : 
+                                `<button onclick="uninstallSkill()">Uninstall Skill</button>`
+                            }
+                        </div>
+                        <script>
+                            const vscode = acquireVsCodeApi();
+                            function installSkill() {
+                                vscode.postMessage({ command: 'install', skill: ${JSON.stringify(skillItem)} });
+                            }
+                            function uninstallSkill() {
+                                vscode.postMessage({ command: 'uninstall', skill: ${JSON.stringify(skillItem)} });
+                            }
+                        </script>
+                    </body>
+                    </html>
+                `;
+                
+                // Handle messages from webview
+                panel.webview.onDidReceiveMessage(
+                    async (message) => {
+                        switch (message.command) {
+                            case 'install':
+                                await vscode.commands.executeCommand('skills.skill.install', message.skill);
+                                break;
+                            case 'uninstall':
+                                await vscode.commands.executeCommand('skills.skill.uninstall', message.skill);
+                                break;
+                        }
+                    },
+                    undefined,
+                    context.subscriptions
+                );
+                
+            } catch (error: any) {
+                console.error('❌ [Details] Error showing skill details:', error);
+                vscode.window.showErrorMessage(`Failed to show skill details: ${error.message}`);
+            }
+        });
+
         const debugEnvironmentCommand = vscode.commands.registerCommand('skills.debug.environment', async () => {
             const output = cliService.showDebugOutput();
             const token = configService.getGitHubToken();
@@ -655,6 +776,7 @@ export async function activate(context: vscode.ExtensionContext) {
             installSkillCommand,
             skillInstallCommand,
             skillUninstallCommand,
+            skillShowDetailsCommand,
             debugEnvironmentCommand,
             testCliCommand
         );

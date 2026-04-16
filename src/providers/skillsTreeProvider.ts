@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { SkillsService, SkillWithRepository, RepositorySkills } from '../services/skillsService';
-import { SkillSearchResult } from '../services/cliWrapper';
+import { SkillSearchResult, SkillWithDetails } from '../services/cliWrapper';
 
 export class SkillTreeItem extends vscode.TreeItem {
     constructor(
@@ -12,10 +12,18 @@ export class SkillTreeItem extends vscode.TreeItem {
         super(label, collapsibleState);
         
         if (skill && type === 'skill') {
-            this.tooltip = `${skill.name}: ${skill.description}`;
-            this.description = skill.description.length > 50 ? 
-                skill.description.substring(0, 47) + '...' : 
-                skill.description;
+            // Enhanced tooltip with full description if available
+            const fullDescription = ('fullDescription' in skill && skill.fullDescription) ? 
+                skill.fullDescription : skill.description;
+            
+            this.tooltip = new vscode.MarkdownString(`**${skill.name}**\n\n${fullDescription}`);
+            this.tooltip.isTrusted = true;
+            
+            // Truncated description for display
+            this.description = fullDescription.length > 60 ? 
+                fullDescription.substring(0, 57) + '...' : 
+                fullDescription;
+            
             this.contextValue = 'skill';
             
             // Set icon and command based on skill status

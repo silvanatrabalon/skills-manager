@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SkillsCliService, Skill, SkillSearchResult, InstallResult, UpdateResult, RemoveResult } from './cliWrapper';
+import { SkillsCliService, Skill, SkillSearchResult, SkillWithDetails, InstallResult, UpdateResult, RemoveResult } from './cliWrapper';
 import { ConfigService, Repository } from './configService';
 
 export interface SkillWithRepository extends Skill {
@@ -339,24 +339,21 @@ export class SkillsService {
         try {
             this.outputChannel.appendLine(`🏗️  [SkillsService] *** ENTERING TRY BLOCK ***`);
             // Use CLI-based discovery for all repository types
-            this.outputChannel.appendLine(`🏗️  [SkillsService] Using CLI to discover skills...`);
-            this.outputChannel.appendLine(`🏗️  [SkillsService] *** CALLING listRepositorySkills METHOD ***`);
+            this.outputChannel.appendLine(`🏗️  [SkillsService] Using CLI to discover skills with details...`);
+            this.outputChannel.appendLine(`🏗️  [SkillsService] *** CALLING listRepositorySkillsWithDetails METHOD ***`);
             
-            const skillNames = await this.cliService.listRepositorySkills(repository.url);
-            this.outputChannel.appendLine(`🏗️  [SkillsService] *** BACK FROM listRepositorySkills METHOD ***`);
-            this.outputChannel.appendLine(`🏗️  [SkillsService] CLI found ${skillNames.length} skills`);
-            this.outputChannel.appendLine(`🏗️  [SkillsService] Raw skillNames type: ${typeof skillNames}`);
-            this.outputChannel.appendLine(`🏗️  [SkillsService] Raw skillNames isArray: ${Array.isArray(skillNames)}`);
-            this.outputChannel.appendLine(`🏗️  [SkillsService] Raw skillNames: ${JSON.stringify(skillNames)}`);
+            const skillsWithDetails = await this.cliService.listRepositorySkillsWithDetails(repository.url);
+            this.outputChannel.appendLine(`🏗️  [SkillsService] *** BACK FROM listRepositorySkillsWithDetails METHOD ***`);
+            this.outputChannel.appendLine(`🏗️  [SkillsService] CLI found ${skillsWithDetails.length} skills with details`);
             
-            // Convert skill names to SkillSearchResult format
-            const skills: SkillSearchResult[] = skillNames.map((skillName, index) => {
-                this.outputChannel.appendLine(`🏗️  [SkillsService] Mapping skill ${index}: ${typeof skillName} = ${skillName}`);
+            // Convert detailed skills to SkillSearchResult format
+            const skills: SkillSearchResult[] = skillsWithDetails.map((skillDetail, index) => {
+                this.outputChannel.appendLine(`🏗️  [SkillsService] Mapping detailed skill ${index}: ${skillDetail.name}`);
                 return {
-                    name: skillName,
-                    description: `Skill: ${skillName}`,
+                    name: skillDetail.name,
+                    description: skillDetail.description || `Skill: ${skillDetail.name}`,
                     source: repository.url,
-                    path: `skills/${skillName}`,
+                    path: `skills/${skillDetail.name}`,
                     repository: repository.url,
                     downloadUrl: null,
                     type: 'skill'

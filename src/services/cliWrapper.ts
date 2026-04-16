@@ -18,6 +18,14 @@ export interface Skill {
     };
 }
 
+export interface SkillWithDetails {
+    name: string;
+    description: string;
+    source: string;
+    triggers?: string;
+    fullDescription?: string;
+}
+
 export interface SkillSearchResult {
     name: string;
     description: string;
@@ -315,6 +323,24 @@ export class SkillsCliService {
             return this.parseSkillsFromCompleteOutput(fullOutput);
         }
     }
+
+    async listRepositorySkillsWithDetails(repository: string): Promise<SkillWithDetails[]> {
+        this.outputChannel.appendLine(`🌟 [CLI] Starting detailed discovery for repository: ${repository}`);
+        
+        try {
+            const args = ['npx', 'skills', 'add', repository, '--list'];
+            this.outputChannel.appendLine(`🌟 [CLI] Command: ${args.join(' ')}`);
+            
+            const result = await this.runCommand(args.join(' '));
+            this.outputChannel.appendLine(`🌟 [CLI] SUCCESS - stdout length: ${result.stdout.length}`);
+            
+            return this.parseDetailedSkillsOutput(result.stdout, repository);
+            
+        } catch (error) {
+            this.outputChannel.appendLine(`🌟 [CLI] Error in listRepositorySkillsWithDetails: ${(error as Error).message}`);
+            return [];
+        }
+    }
     
     // Parse skills from complete CLI output by finding "Available" section
     private parseSkillsFromCompleteOutput(fullOutput: string): string[] {
@@ -583,5 +609,106 @@ export class SkillsCliService {
             message: `Removed ${skill}`,
             skill
         }));
+    }
+
+    private parseDetailedSkillsOutput(output: string, repository: string): SkillWithDetails[] {
+        this.outputChannel.appendLine(`🌟 [PARSE] Starting detailed parsing of output (${output.length} chars)`);
+        
+        const skills: SkillWithDetails[] = [];
+        const lines = output.split('\n');
+        
+        let inAvailableSection = false;
+        let currentSkill: Partial<SkillWithDetails> | null = null;
+        let collectingDescription = false;
+        let descriptionLines: string[] = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            this.outputChannel.appendLine(`🌟 [PARSE] Line ${i}: "${line}"`);
+            
+            // Look for "Available Skills" section
+            if (line.toLowerCase().includes('available skills')) {
+                inAvailableSection = true;
+                this.outputChannel.appendLine(`🌟 [PARSE] Found "Available Skills" section`);
+                continue;
+            }
+            
+            if (!inAvailableSection) continue;
+            
+            // Skip the footer line
+            if (line.includes('Use --skill')) {
+                break;
+            }
+            
+            // Look for skill name line: "│    skill-name" (name only, no spaces in skill name)
+            const skillNameMatch = line.match(/^│\s+([a-zA-Z0-9\-_]+)\s*$/);
+            if (skillNameMatch) {
+                // Finalize previous skill if exists
+                if (currentSkill && descriptionLines.length > 0) {
+                    currentSkill.description = descriptionLines.join(' ').trim();
+                    currentSkill.fullDescription = currentSkill.description;
+                    skills.push(currentSkill as SkillWithDetails);
+                    this.outputChannel.appendLine(`🌟 [PARSE] Completed skill: ${currentSkill.name}`);
+                }
+                
+                // Start new skill
+                currentSkill = {
+                    name: skillNameMatch[1],
+                    source: repository,
+                    description: '',
+                    fullDescription: ''
+                };
+                descriptionLines = [];
+                collectingDescription = false;
+                this.outputChannel.appendLine(`🌟 [PARSE] Found new skill: ${skillNameMatch[1]}`);
+                continue;
+            }
+            
+            // Look for description start: "│      text..." (description starts with indentation)
+            const descriptionMatch = line.match(/^│\s{6,}(.+)$/);
+            if (descriptionMatch && currentSkill) {
+                collectingDescription = true;
+                const descText = descriptionMatch[1].trim();
+                if (descText) {
+                    descriptionLines.push(descText);
+                    this.outputChannel.appendLine(`🌟 [PARSE] Added description line: "${descText}"`);
+                }
+                continue;
+            }
+            
+            // Continue collecting description if we're in description mode and line has content
+            if (collectingDescription && currentSkill) {
+                const continuationMatch = line.match(/^(.+?)(?:\s+│)?$/);
+                if (continuationMatch) {
+                    const descText = continuationMatch[1].trim();
+                    if (descText && !descText.startsWith('│') && !descText.startsWith('┌') && !descText.startsWith('└')) {
+                        descriptionLines.push(descText);
+                        this.outputChannel.appendLine(`🌟 [PARSE] Continued description: "${descText}"`);
+                        continue;
+                    }
+                }
+            }
+            
+            // Empty line with just "│" - transition or end of description
+            if (line.match(/^│\s*$/) && collectingDescription) {
+                collectingDescription = false;
+                this.outputChannel.appendLine(`🌟 [PARSE] End of description for current skill`);
+            }
+        }
+        
+        // Finalize last skill
+        if (currentSkill && descriptionLines.length > 0) {
+            currentSkill.description = descriptionLines.join(' ').trim();
+            currentSkill.fullDescription = currentSkill.description;
+            skills.push(currentSkill as SkillWithDetails);
+            this.outputChannel.appendLine(`🌟 [PARSE] Completed final skill: ${currentSkill.name}`);
+        }
+        
+        this.outputChannel.appendLine(`🌟 [PARSE] Final result: ${skills.length} skills with details found`);
+        skills.forEach((skill, index) => {
+            this.outputChannel.appendLine(`  ${index + 1}. ${skill.name}: ${skill.description?.substring(0, 100)}${(skill.description?.length || 0) > 100 ? '...' : ''}`);
+        });
+        
+        return skills;
     }
 }
