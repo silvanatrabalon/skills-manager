@@ -1,0 +1,13 @@
+node_modules
+out
+.vscode-test
+*.vsix
+.DS_Store
+dist
+*.log
+npm-debug.log*
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+webview-ui/node_modules
+webview-ui/dist

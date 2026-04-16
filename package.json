@@ -1,0 +1,244 @@
+{
+  "name": "skills-manager",
+  "displayName": "Skills Manager",
+  "description": "Visual interface for managing agent skills using Vercel's skills CLI",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other",
+    "Extension Packs"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "skills.explorer.show",
+        "title": "Show Skills Explorer",
+        "category": "Skills",
+        "icon": "$(search-view-icon)"
+      },
+      {
+        "command": "skills.install.interactive",
+        "title": "Install Skills...",
+        "category": "Skills",
+        "icon": "$(add)"
+      },
+      {
+        "command": "skills.update.all",
+        "title": "Update All Skills",
+        "category": "Skills",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "skills.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "skills.repository.add",
+        "title": "Add Repository",
+        "icon": "$(add)"
+      },
+      {
+        "command": "skills.repository.remove",
+        "title": "Remove Repository",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "skills.showDebug",
+        "title": "Show Debug Output",
+        "category": "Skills",
+        "icon": "$(output)"
+      },
+      {
+        "command": "skills.skill.install",
+        "title": "Install Skill",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "skills.skill.uninstall",
+        "title": "Uninstall Skill",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "skills.skill.update",
+        "title": "Update Skill",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "skills.test.cli",
+        "title": "Test CLI Connection",
+        "category": "Skills",
+        "icon": "$(debug-console)"
+      }
+    ],
+    "views": {
+      "skills-explorer": [
+        {
+          "id": "skills.tree",
+          "name": "Skills"
+        },
+        {
+          "id": "skills.repositories",
+          "name": "Source Skills"
+        },
+        {
+          "id": "skills.configuration",
+          "name": "Configuration"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "skills-explorer",
+          "title": "Skills Manager",
+          "icon": "$(extensions)"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "skills.refresh",
+          "when": "view == skills.tree",
+          "group": "navigation"
+        },
+        {
+          "command": "skills.repository.add",
+          "when": "view == skills.repositories",
+          "group": "navigation"
+        },
+        {
+          "command": "skills.explorer.show",
+          "when": "view == skills.tree",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "skills.skill.update",
+          "when": "view == skills.tree && viewItem == skill",
+          "group": "1_actions"
+        },
+        {
+          "command": "skills.skill.uninstall",
+          "when": "view == skills.tree && viewItem == skill",
+          "group": "2_actions"
+        },
+        {
+          "command": "skills.repository.remove",
+          "when": "view == skills.repositories && viewItem == repository",
+          "group": "1_actions"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Skills Manager",
+      "properties": {
+        "skills.repositories": {
+          "type": "array",
+          "description": "List of skills repositories",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "type": {
+                "enum": [
+                  "github",
+                  "gitlab",
+                  "local"
+                ]
+              }
+            }
+          },
+          "default": []
+        },
+        "skills.defaultScope": {
+          "type": "string",
+          "enum": [
+            "global",
+            "project"
+          ],
+          "default": "project",
+          "description": "Default installation scope"
+        },
+        "skills.autoUpdate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically update skills"
+        },
+        "skills.targetAgents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Default target agents for installations",
+          "default": [
+            "github-copilot",
+            "claude-code",
+            "cursor"
+          ]
+        },
+        "skills.github.token": {
+          "type": "string",
+          "description": "GitHub personal access token for API requests. Prevents rate limiting when fetching available skills.",
+          "default": "",
+          "scope": "machine-overridable"
+        },
+        "skills.github.enableApi": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable GitHub API integration to discover available skills in repositories"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node16",
+    "watch": "npm run compile -- --watch",
+    "test": "node ./out/test/runTest.js",
+    "lint": "eslint src --ext ts",
+    "pretest": "npm run compile && npm run lint"
+  },
+  "devDependencies": {
+    "@types/chai": "^5.2.3",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "16.x",
+    "@types/vscode": "^1.74.0",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
+    "@typescript-eslint/parser": "^5.45.0",
+    "@vscode/test-electron": "^2.5.2",
+    "chai": "^6.2.2",
+    "esbuild": "^0.16.17",
+    "eslint": "^8.28.0",
+    "mocha": "^11.7.5",
+    "typescript": "^4.9.4"
+  },
+  "publisher": "your-publisher-name",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/skills-manager"
+  },
+  "keywords": [
+    "skills",
+    "agent",
+    "vercel",
+    "cli",
+    "manager"
+  ]
+}

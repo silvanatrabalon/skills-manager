@@ -1,0 +1,19 @@
+import * as vscode from 'vscode';
+
+export async function activate(context: vscode.ExtensionContext) {
+    console.log('Skills Manager extension is now active!');
+    
+    // Simple test command
+    const disposable = vscode.commands.registerCommand('skills.test', () => {
+        vscode.window.showInformationMessage('Skills Manager is working!');
+    });
+    
+    context.subscriptions.push(disposable);
+    
+    // Show a message that the extension loaded
+    vscode.window.showInformationMessage('Skills Manager Extension Loaded Successfully!');
+}
+
+export function deactivate() {
+    console.log('Skills Manager extension is now deactivated!');
+}
