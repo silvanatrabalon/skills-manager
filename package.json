@@ -154,22 +154,22 @@
         {
           "command": "skills.skill.showDetails",
           "when": "view == skills.tree && viewItem == skill",
-          "group": "inline"
+          "group": "inline@1"
         },
         {
           "command": "skills.skill.uninstall",
           "when": "view == skills.tree && viewItem == skill",
-          "group": "inline"
+          "group": "inline@2"
         },
         {
           "command": "skills.skill.showDetails",
           "when": "view == skills.tree && viewItem == available-skill",
-          "group": "inline"
+          "group": "inline@1"
         },
         {
           "command": "skills.skill.install",
           "when": "view == skills.tree && viewItem == available-skill",
-          "group": "inline"
+          "group": "inline@2"
         }
       ]
     },
