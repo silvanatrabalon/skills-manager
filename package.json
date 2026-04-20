@@ -46,8 +46,8 @@
       },
       {
         "command": "skills.repository.remove",
-        "title": "Remove Repository",
-        "icon": "$(remove)"
+        "title": "Unsubscribe from Repository",
+        "icon": "$(close)"
       },
       {
         "command": "skills.showDebug",
@@ -150,6 +150,11 @@
           "command": "skills.repository.remove",
           "when": "view == skills.repositories && viewItem == repository",
           "group": "1_actions"
+        },
+        {
+          "command": "skills.repository.remove",
+          "when": "view == skills.repositories && viewItem == repository",
+          "group": "inline@1"
         },
         {
           "command": "skills.skill.showDetails",

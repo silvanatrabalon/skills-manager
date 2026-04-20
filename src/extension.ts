@@ -247,11 +247,14 @@ class RepositoryTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem>
             const item = new vscode.TreeItem(repo.name, vscode.TreeItemCollapsibleState.None);
             item.description = repo.url;
             item.tooltip = `${repo.name}\n${repo.url}\nType: ${repo.type}`;
+            item.contextValue = 'repository';  // ¡Esta línea faltaba!
             item.iconPath = new vscode.ThemeIcon(
                 repo.type === 'github' ? 'github' : 
                 repo.type === 'gitlab' ? 'gitlab' : 
                 repo.type === 'local' ? 'folder' : 'repo'
             );
+            // Store repository data for remove command
+            (item as any).repository = repo;
             return item;
         });
     }
@@ -356,6 +359,10 @@ export async function activate(context: vscode.ExtensionContext) {
         
         const addRepoCommand = vscode.commands.registerCommand('skills.repository.add', async () => {
             await addRepositoryInteractive(configService, repoProvider, skillsProvider);
+        });
+
+        const removeRepoCommand = vscode.commands.registerCommand('skills.repository.remove', async (item: vscode.TreeItem) => {
+            await removeRepositoryInteractive(item, configService, repoProvider, skillsProvider);
         });
         
         const showDebugCommand = vscode.commands.registerCommand('skills.showDebug', () => {
@@ -1135,6 +1142,7 @@ export async function activate(context: vscode.ExtensionContext) {
             configurationTreeView,
             refreshCommand,
             addRepoCommand,
+            removeRepoCommand,
             showDebugCommand,
             skillSelectCommand,
             configureTokenCommand,
@@ -1227,6 +1235,39 @@ async function addRepositoryInteractive(configService: ConfigService, repoProvid
 
     } catch (error) {
         vscode.window.showErrorMessage('Failed to add repository: ' + (error as Error).message);
+    }
+}
+
+async function removeRepositoryInteractive(item: vscode.TreeItem, configService: ConfigService, repoProvider: RepositoryTreeProvider, skillsProvider: SkillsTreeProvider) {
+    try {
+        // Access repository data from the stored property
+        const repository = (item as any).repository;
+        if (!repository) {
+            vscode.window.showWarningMessage('No repository selected');
+            return;
+        }
+        
+        const confirmDelete = await vscode.window.showWarningMessage(
+            `Are you sure you want to unsubscribe from "${repository.name}"?`,
+            { 
+                modal: true, 
+                detail: 'This will remove the repository and hide its available skills. Installed skills will remain.' 
+            },
+            'Unsubscribe'
+        );
+
+        if (confirmDelete === 'Unsubscribe') {
+            // Remove repository from configuration
+            await configService.removeRepository(repository.id);
+            
+            // Refresh both views to update UI
+            repoProvider.refresh();
+            await skillsProvider.refreshAsync();
+            
+            vscode.window.showInformationMessage(`Successfully unsubscribed from "${repository.name}"`);
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage('Failed to unsubscribe from repository: ' + (error as Error).message);
     }
 }
 
