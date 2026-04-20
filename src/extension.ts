@@ -722,26 +722,6 @@ export async function activate(context: vscode.ExtensionContext) {
                             .description-content {
                                 line-height: 1.5;
                             }
-                            .actions {
-                                margin-top: 8px;
-                                padding-top: 8px;
-                                border-top: 1px solid var(--vscode-textBlockQuote-border);
-                                flex-shrink: 0;
-                            }
-                            button {
-                                background: var(--vscode-button-background);
-                                color: var(--vscode-button-foreground);
-                                border: none;
-                                padding: 6px 12px;
-                                border-radius: 4px;
-                                cursor: pointer;
-                                margin-right: 6px;
-                                font-size: 14px;
-                                font-weight: 500;
-                            }
-                            button:hover {
-                                background: var(--vscode-button-hoverBackground);
-                            }
                             .metadata {
                                 display: flex;
                                 gap: 20px;
@@ -776,41 +756,8 @@ export async function activate(context: vscode.ExtensionContext) {
                                 <div class="metadata-label">Description:</div>
                                 <div class="description-content">${fullDescription}</div>
                             </div>
-                            
-                            <div class="actions">
-                                ${!isInstalled ? 
-                                    `<button onclick="installSkill()">📥 Install Skill</button>` : 
-                                    `<button onclick="uninstallSkill()" style="background: var(--vscode-errorForeground); color: white;">🗑️ Uninstall Skill</button>`
-                                }
-                                <button onclick="refreshData()" style="background: var(--vscode-textLink-foreground);">🔄 Refresh</button>
-                            </div>
                         </div>
                         <script>
-                            const vscode = acquireVsCodeApi();
-                            
-                            // Prepare skill object for messages 
-                            const skillData = ${JSON.stringify({
-                                name: skillName,
-                                skillName: skillName,
-                                repository: source,
-                                source: source,
-                                description: fullDescription,
-                                fullDescription: fullDescription,
-                                installed: isInstalled
-                            })};
-                            
-                            function installSkill() {
-                                vscode.postMessage({ command: 'install', skill: skillData });
-                            }
-                            function uninstallSkill() {
-                                if (confirm('Are you sure you want to uninstall this skill?')) {
-                                    vscode.postMessage({ command: 'uninstall', skill: skillData });
-                                }
-                            }
-                            function refreshData() {
-                                vscode.postMessage({ command: 'refresh' });
-                            }
-                            
                             // Auto-focus on load for better UX
                             window.addEventListener('load', () => {
                                 document.body.focus();
@@ -819,28 +766,6 @@ export async function activate(context: vscode.ExtensionContext) {
                     </body>
                     </html>
                 `;
-                
-                // Handle messages from webview
-                panel.webview.onDidReceiveMessage(
-                    async (message) => {
-                        switch (message.command) {
-                            case 'install':
-                                await vscode.commands.executeCommand('skills.skill.install', message.skill);
-                                panel.dispose(); // Close panel after install
-                                break;
-                            case 'uninstall':
-                                await vscode.commands.executeCommand('skills.skill.uninstall', message.skill);
-                                panel.dispose(); // Close panel after uninstall
-                                break;
-                            case 'refresh':
-                                await vscode.commands.executeCommand('skills.refresh');
-                                vscode.window.showInformationMessage('Skills refreshed!');
-                                break;
-                        }
-                    },
-                    undefined,
-                    context.subscriptions
-                );
                 
             } catch (error: any) {
                 console.error('❌ [Details] Error showing skill details:', error);

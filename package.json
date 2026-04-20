@@ -152,8 +152,18 @@
           "group": "1_actions"
         },
         {
+          "command": "skills.skill.showDetails",
+          "when": "view == skills.tree && viewItem == skill",
+          "group": "inline"
+        },
+        {
           "command": "skills.skill.uninstall",
           "when": "view == skills.tree && viewItem == skill",
+          "group": "inline"
+        },
+        {
+          "command": "skills.skill.showDetails",
+          "when": "view == skills.tree && viewItem == available-skill",
           "group": "inline"
         },
         {

@@ -31,25 +31,15 @@ export class SkillTreeItem extends vscode.TreeItem {
             
             this.contextValue = 'skill';
             
-            // Set icon and command based on skill status
+            // Set icon and context value based on skill status (no automatic commands)
             if ('installed' in skill && skill.installed) {
-                // INSTALLED SKILL - Green check with uninstall command
+                // INSTALLED SKILL - Green check icon only  
                 this.contextValue = 'skill';
                 this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
-                this.command = {
-                    command: 'skills.skill.uninstall',
-                    title: 'Uninstall Skill',
-                    arguments: [this]  // Pass TreeItem instead of just skill
-                };
             } else {
-                // AVAILABLE SKILL - Blue download with install command  
+                // AVAILABLE SKILL - Blue download icon only
                 this.contextValue = 'available-skill';
                 this.iconPath = new vscode.ThemeIcon('cloud-download', new vscode.ThemeColor('charts.blue'));
-                this.command = {
-                    command: 'skills.skill.install',
-                    title: 'Install Skill',
-                    arguments: [this]  // Pass TreeItem instead of just skill
-                };
             }
         } else if (type === 'section') {
             if (label.includes('Installed')) {
