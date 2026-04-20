@@ -194,6 +194,11 @@ export class SkillsCommands {
             
             if (result && result.success) {
                 if (result.updated) {
+                    console.log(`🔧 [SkillsCommands] Update successful for ${skill.name}, now updating hash...`);
+                    
+                    // Update successful - now update the hash in skills-lock.json
+                    await this.updateSkillLockHash(skill);
+                    
                     vscode.window.showInformationMessage(`Successfully updated "${skill.name}"`);
                 } else {
                     vscode.window.showInformationMessage(`"${skill.name}" is already up to date`);
@@ -206,6 +211,8 @@ export class SkillsCommands {
             vscode.window.showErrorMessage('Error updating skill: ' + (error as Error).message);
         }
     }
+
+
 
     private async getInstallOptions(): Promise<{
         scope: 'global' | 'project';

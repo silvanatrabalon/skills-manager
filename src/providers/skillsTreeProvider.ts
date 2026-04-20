@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SkillsService, SkillWithRepository, RepositorySkills } from '../services/skillsService';
 import { SkillSearchResult } from '../services/cliWrapper';
+import { UpdateManager } from '../services/updateManager';
 
 export class SkillTreeItem extends vscode.TreeItem {
     public readonly fullDescription?: string;  // Store full description separately
@@ -9,7 +10,8 @@ export class SkillTreeItem extends vscode.TreeItem {
         public readonly label: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly skill?: SkillWithRepository | SkillSearchResult,
-        public readonly type: 'section' | 'skill' | 'local-section' | 'global-section' | 'repository-section' | 'error-repo' = 'skill'
+        public readonly type: 'section' | 'skill' | 'local-section' | 'global-section' | 'repository-section' | 'error-repo' = 'skill',
+        public readonly hasUpdateAvailable?: boolean  // ← NUEVO
     ) {
         super(label, collapsibleState);
         
@@ -29,13 +31,19 @@ export class SkillTreeItem extends vscode.TreeItem {
                 fullDescription.substring(0, 57) + '...' : 
                 fullDescription;
             
-            this.contextValue = 'skill';
-            
-            // Set icon and context value based on skill status (no automatic commands)
+            // Set icon and context value based on skill status
             if ('installed' in skill && skill.installed) {
-                // INSTALLED SKILL - Green check icon only  
-                this.contextValue = 'skill';
-                this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
+                // INSTALLED SKILL - Different treatment based on update availability
+                if (hasUpdateAvailable) {
+                    // ← NUEVO: Skill has update available
+                    this.contextValue = 'skill-with-update';
+                    this.iconPath = new vscode.ThemeIcon('sync', new vscode.ThemeColor('charts.orange'));
+                    this.description = `${this.description} • Update available`;
+                } else {
+                    // Regular installed skill
+                    this.contextValue = 'skill';
+                    this.iconPath = new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
+                }
             } else {
                 // AVAILABLE SKILL - Blue download icon only
                 this.contextValue = 'available-skill';
@@ -71,6 +79,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     private installedSkills: { local: SkillWithRepository[], global: SkillWithRepository[] } = { local: [], global: [] };
     private availableSkills: RepositorySkills[] = [];
     private outputChannel: vscode.OutputChannel;
+    private updateManager?: UpdateManager;  // ← NUEVO
 
     constructor(public skillsService: SkillsService) {
         console.log('�️  [SkillsTreeProvider] Constructor called');
@@ -80,6 +89,24 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
         this.installedSkills = { local: [], global: [] };
         this.availableSkills = [];
         console.log('🏗️  [SkillsTreeProvider] Constructor complete - arrays initialized as empty with scope structure');
+    }
+    
+    // ← NUEVO: Método para configurar el UpdateManager
+    setUpdateManager(updateManager: UpdateManager): void {
+        this.updateManager = updateManager;
+        
+        // Listen to update changes and refresh tree
+        this.updateManager.onDidUpdateChange(() => {
+            this._onDidChangeTreeData.fire();
+        });
+    }
+    
+    // ← NUEVO: Helper method to check if a skill has update available
+    private hasUpdateAvailable(skillName: string): boolean {
+        if (!this.updateManager) {
+            return false;
+        }
+        return this.updateManager.hasUpdateAvailable(skillName);
     }
     
     // Call this AFTER tree view is registered
@@ -298,7 +325,9 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
                 new SkillTreeItem(
                     skill.name,
                     vscode.TreeItemCollapsibleState.None,
-                    skill
+                    skill,
+                    'skill',
+                    this.hasUpdateAvailable(skill.name)  // ← NUEVO: Check for updates
                 )
             );
             
@@ -308,7 +337,9 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
                 new SkillTreeItem(
                     skill.name,
                     vscode.TreeItemCollapsibleState.None,
-                    skill
+                    skill,
+                    'skill',
+                    this.hasUpdateAvailable(skill.name)  // ← NUEVO: Check for updates
                 )
             );
             

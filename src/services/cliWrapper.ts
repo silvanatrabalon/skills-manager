@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { UpdateCheckService, SkillUpdateInfo } from './updateCheckService';
 
 const execAsync = promisify(exec);
 
@@ -53,6 +54,13 @@ export interface RemoveResult {
     skill: string;
 }
 
+export interface UpdateCheckResult {
+    skillsAvailable: string[];
+    skillsUpToDate: string[];
+    skillsSkipped: { name: string; reason: string }[];
+    updateInfos: SkillUpdateInfo[];
+}
+
 export interface AddSkillOptions {
     agents?: string[];
     skills?: string[];
@@ -70,9 +78,11 @@ export interface RemoveOptions {
 
 export class SkillsCliService {
     private outputChannel: vscode.OutputChannel;
+    private updateCheckService: UpdateCheckService;
 
     constructor() {
         this.outputChannel = vscode.window.createOutputChannel('Skills Manager');
+        this.updateCheckService = new UpdateCheckService();
     }
 
     async checkCliAvailability(): Promise<boolean> {
@@ -662,5 +672,45 @@ export class SkillsCliService {
         });
         
         return skills;
+    }
+
+    async checkForUpdates(scope?: 'global' | 'project'): Promise<UpdateCheckResult> {
+        this.outputChannel.appendLine(`🔍 [CLI] Checking for skill updates (scope: ${scope || 'both'})`);
+        
+        try {
+            const updateInfos = await this.updateCheckService.checkSkillUpdates(scope || 'both');
+            this.outputChannel.appendLine(`🔍 [CLI] Found ${updateInfos.length} skills in lock files`);
+            
+            const skillsAvailable = updateInfos
+                .filter(info => info.hasUpdate)
+                .map(info => info.name);
+            
+            const skillsUpToDate = updateInfos
+                .filter(info => !info.hasUpdate)
+                .map(info => info.name);
+            
+            this.outputChannel.appendLine(`🔍 [CLI] Updates available: ${skillsAvailable.length} skills`);
+            this.outputChannel.appendLine(`🔍 [CLI] Up to date: ${skillsUpToDate.length} skills`);
+            
+            if (skillsAvailable.length > 0) {
+                this.outputChannel.appendLine(`🔍 [CLI] Skills with updates: ${skillsAvailable.join(', ')}`);
+            }
+            
+            const checkResult: UpdateCheckResult = {
+                skillsAvailable,
+                skillsUpToDate,
+                skillsSkipped: [], // Could be enhanced to track skipped skills
+                updateInfos
+            };
+            
+            this.outputChannel.appendLine(`🔍 [CLI] Update check complete`);
+            
+            return checkResult;
+            
+        } catch (error) {
+            this.outputChannel.appendLine(`❌ [CLI] Error checking for updates: ${(error as Error).message}`);
+            this.outputChannel.show();
+            throw error;
+        }
     }
 }

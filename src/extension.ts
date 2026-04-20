@@ -3,6 +3,7 @@ import * as https from 'https';
 import { SkillsService } from './services/skillsService';
 import { SkillsTreeProvider } from './providers/skillsTreeProvider';
 import { SkillsCliService } from './services/cliWrapper';
+import { UpdateManager } from './services/updateManager';
 
 class GitHubService {
     constructor(private _configService: ConfigService) {}
@@ -299,6 +300,14 @@ export async function activate(context: vscode.ExtensionContext) {
         } catch (error) {
             console.error('❌ [Extension] Error in skillsProvider.initialize():', error);
         }
+        
+        // ← NUEVO: Initialize UpdateManager DESPUÉS de que skillsProvider esté listo
+        console.log('🕒 [Extension] Initializing UpdateManager...');
+        const updateManager = new UpdateManager(context);
+        await updateManager.initialize();
+        
+        // Configure the skills provider to use the update manager
+        skillsProvider.setUpdateManager(updateManager);
         
         const repositoryTreeView = vscode.window.createTreeView('skills.repositories', {
             treeDataProvider: repoProvider,
@@ -1140,6 +1149,69 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         });
         
+        // ← NUEVO: Comando para actualizar un skill específico
+        const skillUpdateCommand = vscode.commands.registerCommand('skills.skill.update', async (skillItem: any) => {
+            try {
+                console.log('🔄 [Update] Updating skill:', skillItem);
+                
+                const skill = skillItem.skill || skillItem;
+                const skillName = skill.name || skill.skillName || skillItem.label;
+                
+                if (!skillName) {
+                    vscode.window.showErrorMessage('Missing skill name');
+                    return;
+                }
+
+                // Confirmar el update
+                const confirm = await vscode.window.showInformationMessage(
+                    `Update "${skillName}" to the latest version?`,
+                    'Update', 'Cancel'
+                );
+                
+                if (confirm !== 'Update') {
+                    return;
+                }
+
+                // Ejecutar el update
+                const results = await skillsService.updateSkills([skillName], skill.scope);
+                const result = results[0];
+                
+                if (result?.success) {
+                    vscode.window.showInformationMessage(`✅ Updated skill: ${skillName}`);
+                    
+                    // Mark as updated in UpdateManager (clears UI notification)
+                    await updateManager.markSkillAsUpdated(skillName);
+                    
+                    // Refresh tree to remove update indicator
+                    await skillsProvider.refreshAsync();
+                } else {
+                    vscode.window.showErrorMessage(`❌ Failed to update ${skillName}: ${result?.message || 'Unknown error'}`);
+                }
+                
+            } catch (error: any) {
+                console.error('❌ [Update] Error updating skill:', error);
+                vscode.window.showErrorMessage(`Failed to update skill: ${error.message}`);
+            }
+        });
+        
+        // ← NUEVO: Comando para forzar check de updates
+        const forceUpdateCheckCommand = vscode.commands.registerCommand('skills.update.check', async () => {
+            try {
+                vscode.window.showInformationMessage('Checking for skill updates...');
+                const updatesAvailable = await updateManager.forceUpdateCheck();
+                
+                if (updatesAvailable.length > 0) {
+                    vscode.window.showInformationMessage(`Found ${updatesAvailable.length} skill update(s)!`);
+                } else {
+                    vscode.window.showInformationMessage('All skills are up-to-date!');
+                }
+                
+                await skillsProvider.refreshAsync();
+            } catch (error: any) {
+                vscode.window.showErrorMessage(`Failed to check for updates: ${error.message}`);
+            }
+        });
+        
         // Add subscriptions
         context.subscriptions.push(
             skillsTreeView,
@@ -1161,7 +1233,10 @@ export async function activate(context: vscode.ExtensionContext) {
             debugEnvironmentCommand,
             testCliCommand,
             showExplorerCommand,
-            interactiveInstallCommand
+            interactiveInstallCommand,
+            skillUpdateCommand,        // ← NUEVO: Update command
+            forceUpdateCheckCommand,   // ← NUEVO: Force check command
+            updateManager             // ← NUEVO: Dispose del UpdateManager cuando se desactive la extensión
         );
         
         // Show message after a small delay

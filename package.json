@@ -85,6 +85,12 @@
         "title": "Test CLI Connection",
         "category": "Skills",
         "icon": "$(debug-console)"
+      },
+      {
+        "command": "skills.update.check",
+        "title": "Check for Updates",
+        "category": "Skills",
+        "icon": "$(search)"
       }
     ],
     "views": {
@@ -185,6 +191,36 @@
           "command": "skills.skill.install",
           "when": "view == skills.tree && viewItem == available-skill",
           "group": "inline@2"
+        },
+        {
+          "command": "skills.skill.update",
+          "when": "view == skills.tree && viewItem == skill-with-update",
+          "group": "inline@1"
+        },
+        {
+          "command": "skills.skill.showDetails",
+          "when": "view == skills.tree && viewItem == skill-with-update",
+          "group": "inline@2"
+        },
+        {
+          "command": "skills.skill.uninstall",
+          "when": "view == skills.tree && viewItem == skill-with-update",
+          "group": "inline@3"
+        },
+        {
+          "command": "skills.skill.update",
+          "when": "view == skills.tree && viewItem == skill-with-update",
+          "group": "1_actions"
+        },
+        {
+          "command": "skills.skill.showDetails",
+          "when": "view == skills.tree && viewItem == skill-with-update",
+          "group": "2_info"
+        },
+        {
+          "command": "skills.skill.uninstall",
+          "when": "view == skills.tree && viewItem == skill-with-update",
+          "group": "3_actions"
         }
       ]
     },

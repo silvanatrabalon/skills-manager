@@ -452,4 +452,18 @@ export class SkillsService {
         const repositories = await this.configService.getRepositories();
         return repositories.find(r => r.id === id) || null;
     }
+
+    // Check for updates using the new UpdateCheckService
+    async checkForUpdates(scope?: 'global' | 'project'): Promise<string[]> {
+        this.outputChannel.appendLine(`🔍 [SkillsService] Checking for skill updates...`);
+        
+        try {
+            const updateCheckResult = await this.cliService.checkForUpdates(scope);
+            this.outputChannel.appendLine(`🔍 [SkillsService] Updates available for: ${updateCheckResult.skillsAvailable.join(', ')}`);
+            return updateCheckResult.skillsAvailable;
+        } catch (error) {
+            this.outputChannel.appendLine(`❌ [SkillsService] Error checking for updates: ${error}`);
+            return [];
+        }
+    }
 }
