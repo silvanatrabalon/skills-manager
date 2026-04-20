@@ -670,91 +670,272 @@ export async function activate(context: vscode.ExtensionContext) {
                         <meta name="viewport" content="width=device-width, initial-scale=1.0">
                         <title>Skill Details</title>
                         <style>
+                            * {
+                                box-sizing: border-box;
+                                margin: 0;
+                                padding: 0;
+                            }
+                            
                             body { 
                                 font-family: var(--vscode-font-family);
-                                padding: 8px;
-                                line-height: 1.3;
+                                line-height: 1.6;
                                 color: var(--vscode-foreground);
                                 background: var(--vscode-editor-background);
-                                margin: 0;
-                                height: 100vh;
-                                box-sizing: border-box;
-                                overflow-y: auto;
+                                padding: 24px;
+                                min-height: 100vh;
                             }
+                            
                             .container {
-                                max-width: 100%;
-                                height: 100%;
-                                display: flex;
-                                flex-direction: column;
+                                max-width: 800px;
+                                margin: 0 auto;
+                                animation: fadeIn 0.3s ease-out;
                             }
+                            
+                            @keyframes fadeIn {
+                                from { opacity: 0; transform: translateY(10px); }
+                                to { opacity: 1; transform: translateY(0); }
+                            }
+                            
+                            .header {
+                                display: flex;
+                                align-items: flex-start;
+                                gap: 16px;
+                                margin-bottom: 24px;
+                                padding: 20px;
+                                background: var(--vscode-sideBar-background);
+                                border-radius: 12px;
+                                border: 1px solid var(--vscode-sideBar-border);
+                                position: relative;
+                                overflow: hidden;
+                            }
+                            
+                            .header::before {
+                                content: '';
+                                position: absolute;
+                                top: 0;
+                                left: 0;
+                                right: 0;
+                                height: 3px;
+                                background: ${isInstalled ? 
+                                    'linear-gradient(90deg, var(--vscode-charts-green), var(--vscode-charts-blue))' : 
+                                    'linear-gradient(90deg, var(--vscode-charts-blue), var(--vscode-charts-purple))'
+                                };
+                            }
+                            
+                            .skill-icon {
+                                font-size: 48px;
+                                line-height: 1;
+                                margin-top: 4px;
+                                filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+                            }
+                            
+                            .header-content {
+                                flex: 1;
+                            }
+                            
                             h1 { 
-                                color: var(--vscode-textLink-foreground); 
-                                margin-top: 0;
-                                word-wrap: break-word;
+                                font-size: 28px;
+                                font-weight: 600;
+                                color: var(--vscode-titleBar-activeForeground);
+                                margin-bottom: 8px;
+                                letter-spacing: -0.5px;
                             }
-                            .status { 
-                                padding: 8px 12px;
-                                border-radius: 4px;
-                                background: var(--vscode-textBlockQuote-background);
-                                margin: 10px 0;
-                                font-weight: bold;
+                            
+                            .status-badge { 
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 8px;
+                                padding: 8px 16px;
+                                border-radius: 20px;
+                                font-size: 14px;
+                                font-weight: 500;
+                                background: ${isInstalled ? 
+                                    'var(--vscode-charts-green)' : 
+                                    'var(--vscode-charts-blue)'
+                                };
+                                color: ${isInstalled ? 
+                                    'var(--vscode-button-foreground)' : 
+                                    'var(--vscode-button-foreground)'
+                                };
+                                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
                             }
-                            .source { 
-                                background: var(--vscode-textCodeBlock-background);
-                                padding: 4px 8px;
-                                border-radius: 3px;
-                                font-family: var(--vscode-editor-font-family);
-                                font-size: 0.9em;
-                                word-break: break-all;
+                            
+                            .card {
+                                background: var(--vscode-sideBar-background);
+                                border: 1px solid var(--vscode-sideBar-border);
+                                border-radius: 12px;
+                                padding: 20px;
+                                margin-bottom: 16px;
+                                transition: all 0.2s ease;
                             }
-                            .description {
-                                margin: 15px 0;
-                                padding: 8px;
-                                border-left: 4px solid var(--vscode-textBlockQuote-border);
-                                background: var(--vscode-textBlockQuote-background);
-                                border-radius: 4px;
-                                flex-grow: 1;
-                                overflow-y: auto;
-                                max-height: 60vh;
-                                word-wrap: break-word;
-                                white-space: pre-wrap;
+                            
+                            .card:hover {
+                                border-color: var(--vscode-focusBorder);
+                                box-shadow: 0 4px 12px rgba(0,0,0,0.1);
                             }
-                            .description-content {
-                                line-height: 1.5;
-                            }
-                            .metadata {
+                            
+                            .card-title {
+                                font-size: 16px;
+                                font-weight: 600;
+                                color: var(--vscode-textLink-foreground);
+                                margin-bottom: 12px;
                                 display: flex;
-                                gap: 20px;
-                                margin: 15px 0;
+                                align-items: center;
+                                gap: 8px;
+                            }
+                            
+                            .card-title::before {
+                                content: '';
+                                width: 4px;
+                                height: 16px;
+                                background: var(--vscode-textLink-foreground);
+                                border-radius: 2px;
+                            }
+                            
+                            .source-info {
+                                display: flex;
+                                align-items: center;
+                                gap: 12px;
                                 flex-wrap: wrap;
                             }
-                            .metadata-item {
-                                display: flex;
-                                flex-direction: column;
+                            
+                            .source-chip { 
+                                background: var(--vscode-textCodeBlock-background);
+                                padding: 8px 12px;
+                                border-radius: 8px;
+                                font-family: var(--vscode-editor-font-family);
+                                font-size: 13px;
+                                border: 1px solid var(--vscode-input-border);
+                                color: var(--vscode-textPreformat-foreground);
+                                word-break: break-all;
+                                flex: 1;
                                 min-width: 200px;
                             }
-                            .metadata-label {
-                                font-weight: bold;
-                                margin-bottom: 5px;
+                            
+                            .source-icon {
+                                font-size: 20px;
+                                color: var(--vscode-symbolIcon-repositoryForeground);
+                            }
+                            
+                            .description {
+                                background: var(--vscode-textBlockQuote-background);
+                                border: 1px solid var(--vscode-textBlockQuote-border);
+                                border-left: 4px solid var(--vscode-textLink-foreground);
+                                border-radius: 8px;
+                                padding: 20px;
+                                margin: 0;
+                            }
+                            
+                            .description-content {
+                                line-height: 1.7;
+                                font-size: 14px;
+                                color: var(--vscode-foreground);
+                                white-space: pre-wrap;
+                                word-wrap: break-word;
+                            }
+                            
+                            /* Markdown-style formatting for description */
+                            .description-content h1,
+                            .description-content h2,
+                            .description-content h3 {
                                 color: var(--vscode-textLink-foreground);
+                                margin: 16px 0 8px 0;
+                                font-weight: 600;
+                            }
+                            
+                            .description-content h1 { font-size: 20px; }
+                            .description-content h2 { font-size: 18px; }
+                            .description-content h3 { font-size: 16px; }
+                            
+                            .description-content p {
+                                margin: 12px 0;
+                            }
+                            
+                            .description-content code {
+                                background: var(--vscode-textCodeBlock-background);
+                                padding: 2px 6px;
+                                border-radius: 4px;
+                                font-family: var(--vscode-editor-font-family);
+                                font-size: 13px;
+                            }
+                            
+                            .description-content ul,
+                            .description-content ol {
+                                padding-left: 24px;
+                                margin: 12px 0;
+                            }
+                            
+                            .description-content li {
+                                margin: 6px 0;
+                            }
+                            
+                            .footer {
+                                margin-top: 32px;
+                                padding-top: 20px;
+                                border-top: 1px solid var(--vscode-sideBar-border);
+                                text-align: center;
+                                color: var(--vscode-descriptionForeground);
+                                font-size: 12px;
+                                opacity: 0.7;
+                            }
+                            
+                            /* Scrollbar styling */
+                            ::-webkit-scrollbar {
+                                width: 8px;
+                            }
+                            
+                            ::-webkit-scrollbar-track {
+                                background: var(--vscode-scrollbarSlider-background);
+                            }
+                            
+                            ::-webkit-scrollbar-thumb {
+                                background: var(--vscode-scrollbarSlider-background);
+                                border-radius: 4px;
+                            }
+                            
+                            ::-webkit-scrollbar-thumb:hover {
+                                background: var(--vscode-scrollbarSlider-hoverBackground);
+                            }
+                            
+                            /* Responsive design */
+                            @media (max-width: 600px) {
+                                body { padding: 16px; }
+                                .header { flex-direction: column; text-align: center; }
+                                .skill-icon { align-self: center; }
+                                h1 { font-size: 24px; }
+                                .source-info { flex-direction: column; }
+                                .source-chip { min-width: auto; }
                             }
                         </style>
                     </head>
                     <body>
                         <div class="container">
-                            <h1>${skillName}</h1>
-                            <div class="status">${isInstalled ? '✅ Installed' : '📦 Available for installation'}</div>
-                            
-                            <div class="metadata">
-                                <div class="metadata-item">
-                                    <div class="metadata-label">Source:</div>
-                                    <span class="source">${source}</span>
+                            <div class="header">
+                                <div class="header-content">
+                                    <h1>${skillName}</h1>
                                 </div>
                             </div>
                             
-                            <div class="description">
-                                <div class="metadata-label">Description:</div>
-                                <div class="description-content">${fullDescription}</div>
+                            <div class="card">
+                                <div class="card-title">
+                                    Source Information
+                                </div>
+                                <div class="source-info">
+                                    <div class="source-chip">${source}</div>
+                                </div>
+                            </div>
+                            
+                            <div class="card">
+                                <div class="card-title">
+                                    Description
+                                </div>
+                                <div class="description">
+                                    <div class="description-content">${fullDescription}</div>
+                                </div>
+                            </div>
+                            
+                            <div class="footer">
+                                Skills Manager • Use the inline buttons in the tree view to manage this skill
                             </div>
                         </div>
                         <script>
@@ -762,6 +943,32 @@ export async function activate(context: vscode.ExtensionContext) {
                             window.addEventListener('load', () => {
                                 document.body.focus();
                             });
+                            
+                            // Simple markdown-like formatting for descriptions
+                            function formatDescription() {
+                                const content = document.querySelector('.description-content');
+                                if (!content) return;
+                                
+                                let html = content.textContent
+                                    // Headers
+                                    .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+                                    .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+                                    .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+                                    // Code blocks
+                                    .replace(/\`([^\`]+)\`/g, '<code>$1</code>')
+                                    // Bold text
+                                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                    // Italic text
+                                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                                    // Line breaks
+                                    .replace(/\n\n/g, '</p><p>')
+                                    .replace(/\n/g, '<br>');
+                                    
+                                content.innerHTML = '<p>' + html + '</p>';
+                            }
+                            
+                            // Format description on load
+                            formatDescription();
                         </script>
                     </body>
                     </html>
