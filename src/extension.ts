@@ -356,6 +356,11 @@ export async function activate(context: vscode.ExtensionContext) {
             vscode.window.showInformationMessage('Refreshed Skills Manager - Check output for details');
             cliService.showDebugOutput();
         });
+
+        const collapseAllCommand = vscode.commands.registerCommand('skills.collapseAll', async () => {
+            await vscode.commands.executeCommand('skills.tree.collapseAll');
+            vscode.window.showInformationMessage('Collapsed all skill categories');
+        });
         
         const addRepoCommand = vscode.commands.registerCommand('skills.repository.add', async () => {
             await addRepositoryInteractive(configService, repoProvider, skillsProvider);
@@ -1141,6 +1146,7 @@ export async function activate(context: vscode.ExtensionContext) {
             repositoryTreeView,
             configurationTreeView,
             refreshCommand,
+            collapseAllCommand,
             addRepoCommand,
             removeRepoCommand,
             showDebugCommand,

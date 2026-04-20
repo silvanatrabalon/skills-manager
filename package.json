@@ -40,6 +40,11 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "skills.collapseAll",
+        "title": "Collapse All",
+        "icon": "$(collapse-all)"
+      },
+      {
         "command": "skills.repository.add",
         "title": "Add Repository",
         "icon": "$(add)"
@@ -111,6 +116,11 @@
       "view/title": [
         {
           "command": "skills.refresh",
+          "when": "view == skills.tree",
+          "group": "navigation"
+        },
+        {
+          "command": "skills.collapseAll",
           "when": "view == skills.tree",
           "group": "navigation"
         },

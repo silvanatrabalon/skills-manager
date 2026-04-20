@@ -9,7 +9,7 @@ export class SkillTreeItem extends vscode.TreeItem {
         public readonly label: string,
         public readonly collapsibleState: vscode.TreeItemCollapsibleState,
         public readonly skill?: SkillWithRepository | SkillSearchResult,
-        public readonly type: 'section' | 'skill' | 'local-section' | 'global-section' = 'skill'
+        public readonly type: 'section' | 'skill' | 'local-section' | 'global-section' | 'repository-section' | 'error-repo' = 'skill'
     ) {
         super(label, collapsibleState);
         
@@ -54,6 +54,12 @@ export class SkillTreeItem extends vscode.TreeItem {
         } else if (type === 'global-section') {
             this.iconPath = new vscode.ThemeIcon('globe', new vscode.ThemeColor('charts.green'));
             this.contextValue = 'global-section';
+        } else if (type === 'repository-section') {
+            this.iconPath = new vscode.ThemeIcon('repo', new vscode.ThemeColor('charts.purple'));
+            this.contextValue = 'repository-section';
+        } else if (type === 'error-repo') {
+            this.iconPath = new vscode.ThemeIcon('error', new vscode.ThemeColor('errorForeground'));
+            this.contextValue = 'error-repo';
         }
     }
 }
@@ -250,7 +256,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     }
 
     private getChildItems(element: SkillTreeItem): SkillTreeItem[] {
-        const sectionTypes = ['section', 'local-section', 'global-section'];
+        const sectionTypes = ['section', 'local-section', 'global-section', 'repository-section', 'error-repo'];
         if (!element.type || !sectionTypes.includes(element.type)) {
             return [];
         }
@@ -307,44 +313,78 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
             );
             
         } else if (element.label.includes('Available')) {
-            // Show available skills from all repositories
-            const items: SkillTreeItem[] = [];
+            // Show repositories as subcategories under Available Skills
+            const repoItems: SkillTreeItem[] = [];
             
             for (const repoSkills of this.availableSkills) {
                 if (repoSkills.error) {
-                    items.push(new SkillTreeItem(
+                    repoItems.push(new SkillTreeItem(
                         `${repoSkills.repository.name}: Error loading skills`,
-                        vscode.TreeItemCollapsibleState.None
+                        vscode.TreeItemCollapsibleState.None,
+                        undefined,
+                        'error-repo'
                     ));
                 } else {
-                    for (const skill of repoSkills.skills) {
-                        // Skip skills that are already installed in either scope
+                    // Count available (not installed) skills for this repo
+                    const availableSkillsFromRepo = repoSkills.skills.filter(skill => {
                         const isInstalledLocal = this.installedSkills.local?.some(installed => installed.name === skill.name) || false;
                         const isInstalledGlobal = this.installedSkills.global?.some(installed => installed.name === skill.name) || false;
-                        
-                        if (!isInstalledLocal && !isInstalledGlobal) {
-                            // Add repository info to skill for install command
-                            const skillWithRepo = {
-                                ...skill,
-                                repository: repoSkills.repository.url,
-                                skillName: skill.name // Ensure skillName is available for CLI
-                            };
-                            
-                            items.push(new SkillTreeItem(
-                                skill.name,
-                                vscode.TreeItemCollapsibleState.None,
-                                skillWithRepo
-                            ));
-                        }
+                        return !isInstalledLocal && !isInstalledGlobal;
+                    });
+                    
+                    if (availableSkillsFromRepo.length > 0) {
+                        repoItems.push(new SkillTreeItem(
+                            `${repoSkills.repository.name} (${availableSkillsFromRepo.length})`,
+                            vscode.TreeItemCollapsibleState.Collapsed,
+                            undefined,
+                            'repository-section'
+                        ));
                     }
                 }
             }
             
-            if (items.length === 0) {
+            if (repoItems.length === 0) {
                 return [new SkillTreeItem('No available skills found', vscode.TreeItemCollapsibleState.None)];
             }
             
-            return items;
+            return repoItems;
+            
+        } else if (element.type === 'repository-section') {
+            // Show skills from specific repository
+            const repoName = element.label.split(' (')[0]; // Extract repo name before count
+            const repoSkills = this.availableSkills.find(repo => repo.repository.name === repoName);
+            
+            if (!repoSkills || repoSkills.error) {
+                return [new SkillTreeItem('Error loading skills from this repository', vscode.TreeItemCollapsibleState.None)];
+            }
+            
+            const skillItems: SkillTreeItem[] = [];
+            for (const skill of repoSkills.skills) {
+                // Skip skills that are already installed in either scope
+                const isInstalledLocal = this.installedSkills.local?.some(installed => installed.name === skill.name) || false;
+                const isInstalledGlobal = this.installedSkills.global?.some(installed => installed.name === skill.name) || false;
+                
+                if (!isInstalledLocal && !isInstalledGlobal) {
+                    // Add repository info to skill for install command
+                    const skillWithRepo = {
+                        ...skill,
+                        repository: repoSkills.repository.url,
+                        skillName: skill.name // Ensure skillName is available for CLI
+                    };
+                    
+                    skillItems.push(new SkillTreeItem(
+                        skill.name,
+                        vscode.TreeItemCollapsibleState.None,
+                        skillWithRepo
+                    ));
+                }
+            }
+            
+            if (skillItems.length === 0) {
+                return [new SkillTreeItem('No available skills in this repository', vscode.TreeItemCollapsibleState.None)];
+            }
+            
+            return skillItems;
         }
         
         return [];
