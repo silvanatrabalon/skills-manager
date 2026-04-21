@@ -2,7 +2,7 @@
   "name": "skills-manager",
   "displayName": "Skills Manager",
   "description": "Visual interface for managing agent skills using Vercel's skills CLI",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "icon": "skill-manager.png",
   "engines": {
     "vscode": "^1.74.0"
@@ -298,7 +298,7 @@
   "publisher": "SilvanaTrabalon",
   "repository": {
     "type": "git",
-    "url": "https://github.com/niceintern/skills-manager"
+    "url": "https://github.com/silvanatrabalon/skills-manager"
   },
   "keywords": [
     "skills",
