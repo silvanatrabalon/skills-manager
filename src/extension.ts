@@ -639,6 +639,25 @@ export async function activate(context: vscode.ExtensionContext) {
                 
                 if (result?.success) {
                     vscode.window.showInformationMessage(`✅ Uninstalled skill: ${skillName}`);
+                    
+                    // Post-remove: CLI doesn't remove from local lock, so we do it here
+                    if (skillScope === 'project' || !skillScope) {
+                        const ucs = updateManager.getUpdateCheckService();
+                        const projectLock = ucs.getProjectLockPath();
+                        if (projectLock) {
+                            try {
+                                const fs = require('fs');
+                                const lockContent = JSON.parse(fs.readFileSync(projectLock, 'utf8'));
+                                if (lockContent.skills?.[skillName]) {
+                                    delete lockContent.skills[skillName];
+                                    fs.writeFileSync(projectLock, JSON.stringify(lockContent, null, 2) + '\n', 'utf8');
+                                    console.log(`🗑️ [Uninstall] Removed ${skillName} from local lock file`);
+                                }
+                            } catch (e: any) {
+                                console.error(`🗑️ [Uninstall] Error cleaning local lock: ${e.message}`);
+                            }
+                        }
+                    }
                 } else {
                     vscode.window.showErrorMessage(`❌ Failed to uninstall ${skillName}: ${result?.message || 'Unknown error'}`);
                 }
