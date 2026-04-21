@@ -52,17 +52,17 @@ export class RepositoryCommands {
             }
 
             // Step 3: Validate repository
-            const validationErrors = this.configService.validateRepository(repository);
+            const validationErrors = this._configService.validateRepository(repository);
             if (validationErrors.length > 0) {
                 vscode.window.showErrorMessage(`Invalid repository: ${validationErrors.join(', ')}`);
                 return;
             }
 
             // Step 4: Add repository
-            await this.configService.addRepository(repository);
+            await this._configService.addRepository(repository);
             vscode.window.showInformationMessage(`Successfully added repository "${repository.name}"`);
             
-            this.repositoryProvider.refresh();
+            this._repositoryProvider.refresh();
         } catch (error) {
             if ((error as Error).message.includes('already exists')) {
                 vscode.window.showWarningMessage('A repository with this name or URL already exists.');
@@ -87,9 +87,9 @@ export class RepositoryCommands {
 
         if (confirmDelete === 'Remove') {
             try {
-                await this.configService.removeRepository(repository.id);
+                await this._configService.removeRepository(repository.id);
                 vscode.window.showInformationMessage(`Removed repository "${repository.name}"`);
-                this.repositoryProvider.refresh();
+                this._repositoryProvider.refresh();
             } catch (error) {
                 vscode.window.showErrorMessage('Error removing repository: ' + (error as Error).message);
             }
@@ -144,15 +144,15 @@ export class RepositoryCommands {
             };
 
             // Validate the updated repository
-            const validationErrors = this.configService.validateRepository(updatedRepository);
+            const validationErrors = this._configService.validateRepository(updatedRepository);
             if (validationErrors.length > 0) {
                 vscode.window.showErrorMessage(`Invalid repository: ${validationErrors.join(', ')}`);
                 return;
             }
 
-            await this.configService.updateRepository(updatedRepository);
+            await this._configService.updateRepository(updatedRepository);
             vscode.window.showInformationMessage(`Updated repository "${updatedRepository.name}"`);
-            this.repositoryProvider.refresh();
+            this._repositoryProvider.refresh();
         } catch (error) {
             vscode.window.showErrorMessage('Error updating repository: ' + (error as Error).message);
         }
@@ -164,7 +164,7 @@ export class RepositoryCommands {
         }
 
         try {
-            await this.repositoryProvider.toggleRepository(item.repository);
+            await this._repositoryProvider.toggleRepository(item.repository);
             const status = item.repository.enabled === false ? 'enabled' : 'disabled';
             vscode.window.showInformationMessage(`Repository "${item.repository.name}" ${status}`);
         } catch (error) {
@@ -204,7 +204,7 @@ export class RepositoryCommands {
         }
 
         return {
-            id: this.configService.generateRepositoryId(url),
+            id: this._configService.generateRepositoryId(url),
             name: name.trim(),
             url: url.trim(),
             type,
@@ -265,9 +265,9 @@ export class RepositoryCommands {
         };
 
         try {
-            await this.configService.addRepository(repository);
+            await this._configService.addRepository(repository);
             vscode.window.showInformationMessage('Added Vercel Labs Skills repository');
-            this.repositoryProvider.refresh();
+            this._repositoryProvider.refresh();
         } catch (error) {
             if ((error as Error).message.includes('already exists')) {
                 vscode.window.showInformationMessage('Vercel Labs Skills repository already exists');
@@ -295,7 +295,7 @@ export class RepositoryCommands {
 
             if (name) {
                 const repository: Repository = {
-                    id: this.configService.generateRepositoryId(path),
+                    id: this._configService.generateRepositoryId(path),
                     name,
                     url: path,
                     type: 'local',
@@ -303,9 +303,9 @@ export class RepositoryCommands {
                 };
 
                 try {
-                    await this.configService.addRepository(repository);
+                    await this._configService.addRepository(repository);
                     vscode.window.showInformationMessage(`Added local repository "${name}"`);
-                    this.repositoryProvider.refresh();
+                    this._repositoryProvider.refresh();
                 } catch (error) {
                     vscode.window.showErrorMessage('Error adding local repository: ' + (error as Error).message);
                 }

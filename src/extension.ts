@@ -562,6 +562,11 @@ export async function activate(context: vscode.ExtensionContext) {
                     
                     if (localResult.success && globalResult.success) {
                         vscode.window.showInformationMessage(`✅ Successfully installed ${skillName} both locally and globally for ${agentNames.join(', ')}`);
+                        // Post-install: enrich lock files with skillFolderHash (force=true to overwrite CLI values)
+                        const ucs = updateManager.getUpdateCheckService();
+                        const projectLock = ucs.getProjectLockPath();
+                        if (projectLock) { await ucs.enrichLockEntry(skillName, projectLock, true); }
+                        await ucs.enrichLockEntry(skillName, ucs.getGlobalLockPath(), true);
                     } else {
                         const errors = [];
                         if (!localResult.success) {errors.push(`Local: ${localResult.message}`);}
@@ -579,6 +584,10 @@ export async function activate(context: vscode.ExtensionContext) {
                     if (result.success) {
                         const scopeText = scope === 'project' ? 'locally' : 'globally';
                         vscode.window.showInformationMessage(`✅ Successfully installed ${skillName} ${scopeText} for ${agentNames.join(', ')}`);
+                        // Post-install: enrich lock file with skillFolderHash (force=true to overwrite CLI values)
+                        const ucs = updateManager.getUpdateCheckService();
+                        const lockPath = scope === 'global' ? ucs.getGlobalLockPath() : ucs.getProjectLockPath();
+                        if (lockPath) { await ucs.enrichLockEntry(skillName, lockPath, true); }
                     } else {
                         vscode.window.showErrorMessage(`❌ Failed to install ${skillName}: ${result.message}`);
                     }
@@ -1175,14 +1184,21 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
 
                 // Ejecutar el update
+                console.log(`🔄 [Extension] Updating skill "${skillName}" with scope: "${skill.scope}"`);
                 const results = await skillsService.updateSkills([skillName], skill.scope);
                 const result = results[0];
                 
                 if (result?.success) {
                     vscode.window.showInformationMessage(`✅ Updated skill: ${skillName}`);
                     
-                    // Mark as updated in UpdateManager (clears UI notification)
-                    await updateManager.markSkillAsUpdated(skillName);
+                    // Mark as updated in UpdateManager (scope-specific)
+                    const updateScope = skill.scope === 'global' ? 'global' : 'project';
+                    await updateManager.markSkillAsUpdated(skillName, updateScope as 'global' | 'project');
+                    
+                    // Post-update: enrich lock file with new skillFolderHash (force=true to get fresh hash)
+                    const ucs = updateManager.getUpdateCheckService();
+                    const lockPath = skill.scope === 'global' ? ucs.getGlobalLockPath() : ucs.getProjectLockPath();
+                    if (lockPath) { await ucs.enrichLockEntry(skillName, lockPath, true); }
                     
                     // Refresh tree to remove update indicator
                     await skillsProvider.refreshAsync();
@@ -1213,6 +1229,30 @@ export async function activate(context: vscode.ExtensionContext) {
                 vscode.window.showErrorMessage(`Failed to check for updates: ${error.message}`);
             }
         });
+
+        // ← DEBUG: Comando para debug de estado de updates
+        const debugUpdateStateCommand = vscode.commands.registerCommand('skills.update.debug', async () => {
+            try {
+                const state = updateManager.getDebugState();
+                vscode.window.showInformationMessage(
+                    `Debug State: ${state.availableUpdates.length} skills with updates, Last check: ${state.lastCheck ? new Date(state.lastCheck).toLocaleString() : 'Never'}`
+                );
+                console.log('🔍 [UpdateManager Debug State]', JSON.stringify(state, null, 2));
+            } catch (error: any) {
+                vscode.window.showErrorMessage(`Failed to get debug state: ${error.message}`);
+            }
+        });
+
+        // ← DEBUG: Comando para limpiar estado de updates
+        const clearUpdateStateCommand = vscode.commands.registerCommand('skills.update.clear', async () => {
+            try {
+                await updateManager.clearAllUpdates();
+                vscode.window.showInformationMessage('Update state cleared!');
+                await skillsProvider.refreshAsync();
+            } catch (error: any) {
+                vscode.window.showErrorMessage(`Failed to clear update state: ${error.message}`);
+            }
+        });
         
         // Add subscriptions
         context.subscriptions.push(
@@ -1238,6 +1278,8 @@ export async function activate(context: vscode.ExtensionContext) {
             interactiveInstallCommand,
             skillUpdateCommand,        // ← NUEVO: Update command
             forceUpdateCheckCommand,   // ← NUEVO: Force check command
+            debugUpdateStateCommand,   // ← DEBUG: Debug state command
+            clearUpdateStateCommand,   // ← DEBUG: Clear state command
             updateManager             // ← NUEVO: Dispose del UpdateManager cuando se desactive la extensión
         );
         
@@ -1268,7 +1310,7 @@ async function addRepositoryInteractive(configService: ConfigService, repoProvid
         // Step 2: Repository name
         const name = await vscode.window.showInputBox({
             prompt: 'Enter a name for this repository',
-            placeholder: 'e.g., "My Skills", "Company Skills"'
+            placeHolder: 'e.g., "My Skills", "Company Skills"'
         });
 
         if (!name) {return;}
@@ -1289,7 +1331,7 @@ async function addRepositoryInteractive(configService: ConfigService, repoProvid
         } else {
             url = await vscode.window.showInputBox({
                 prompt: `Enter the ${repoType.label} URL`,
-                placeholder: repoType.value === 'github' 
+                placeHolder: repoType.value === 'github' 
                     ? 'https://github.com/username/repository'
                     : 'https://gitlab.com/username/repository'
             });

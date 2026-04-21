@@ -277,13 +277,21 @@ export class SkillsCliService {
             if (skills?.length) {
                 args.push(...skills);
             }
+            
+            // Add scope flags based on CLI requirements
             if (options.global) {
-                args.push('--global');
+                args.push('-g');  // Use -g for global scope
+            } else {
+                args.push('-p');  // Use -p for project scope (default)
             }
 
-            const result = await this.runCommand(args.join(' '));
+            const finalCommand = args.join(' ');
+            console.log(`🔄 [CLI] Executing: ${finalCommand}`);
+
+            const result = await this.runCommand(finalCommand);
             return this.parseUpdateResults(result.stdout);
         } catch (error) {
+            console.error(`🔄 [CLI] Error updating skills:`, error);
             this.outputChannel.appendLine(`Error updating skills: ${(error as Error).message}`);
             return [];
         }
@@ -559,13 +567,66 @@ export class SkillsCliService {
     }
 
     private parseUpdateResults(output: string): UpdateResult[] {
-        // Parse update command output
-        return [{
-            success: true,
-            message: output,
-            skill: 'all',
-            updated: output.includes('updated')
-        }];
+        console.log('🔄 [CLI] Parsing update output:', output);
+        
+        const results: UpdateResult[] = [];
+        const lines = output.split('\n');
+        
+        let foundSkills = false;
+        
+        for (const line of lines) {
+            // Look for success indicators in CLI output
+            if (line.includes('Successfully updated') || line.includes('✓')) {
+                // Extract skill name if possible
+                const skillMatch = line.match(/(?:Successfully updated|✓)\s+"?([^"]+)"?/i);
+                if (skillMatch) {
+                    results.push({
+                        success: true,
+                        message: line.trim(),
+                        skill: skillMatch[1],
+                        updated: true
+                    });
+                    foundSkills = true;
+                }
+            } else if (line.includes('is already up-to-date') || line.includes('No updates available')) {
+                const skillMatch = line.match(/"?([^"]+)"?\s+is already up-to-date/i);
+                if (skillMatch) {
+                    results.push({
+                        success: true,
+                        message: line.trim(),
+                        skill: skillMatch[1],
+                        updated: false
+                    });
+                    foundSkills = true;
+                }
+            } else if (line.includes('Updated') && line.includes('to')) {
+                // Handle format: "Updated skill-name to version"
+                const skillMatch = line.match(/Updated\s+([^\s]+)/i);
+                if (skillMatch) {
+                    results.push({
+                        success: true,
+                        message: line.trim(),
+                        skill: skillMatch[1],
+                        updated: true
+                    });
+                    foundSkills = true;
+                }
+            }
+        }
+        
+        // If no specific skills found, return a general result
+        if (!foundSkills) {
+            const updated = output.toLowerCase().includes('updated') && !output.toLowerCase().includes('no updates');
+            results.push({
+                success: !output.toLowerCase().includes('error') && !output.toLowerCase().includes('failed'),
+                message: output.trim() || 'Update command completed',
+                skill: 'unknown',
+                updated
+            });
+        }
+        
+        console.log('🔄 [CLI] Parsed update results:', results);
+        return results;
     }
 
     private parseRemoveResults(output: string, skills: string[]): RemoveResult[] {

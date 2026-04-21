@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 import { UpdateCheckService, SkillUpdateInfo } from './updateCheckService';
 
+export interface SkillUpdateEntry {
+    name: string;
+    scope: 'global' | 'project';
+}
+
 export class UpdateManager implements vscode.Disposable {
     private static readonly UPDATE_CHECK_KEY = 'skills.updateCheck.available';
     private static readonly LAST_CHECK_KEY = 'skills.updateCheck.lastCheck';
@@ -10,7 +15,7 @@ export class UpdateManager implements vscode.Disposable {
     private updateCheckService: UpdateCheckService;
     private checkTimer: NodeJS.Timeout | undefined;
     private outputChannel: vscode.OutputChannel;
-    private _onDidUpdateChange = new vscode.EventEmitter<string[]>();
+    private _onDidUpdateChange = new vscode.EventEmitter<SkillUpdateEntry[]>();
     public readonly onDidUpdateChange = this._onDidUpdateChange.event;
     
     constructor(context: vscode.ExtensionContext) {
@@ -20,11 +25,22 @@ export class UpdateManager implements vscode.Disposable {
     }
     
     /**
+     * Get the underlying UpdateCheckService for post-install/update enrichment
+     */
+    getUpdateCheckService(): UpdateCheckService {
+        return this.updateCheckService;
+    }
+    
+    /**
      * Initialize the update manager and start periodic checking
      */
     async initialize(): Promise<void> {
         this.outputChannel.appendLine('🕒 [UpdateManager] Initializing periodic update checking...');
         this.outputChannel.show(); // Force show the output channel
+        
+        // Clear any stale update state from previous sessions
+        await this.clearAllUpdates();
+        this.outputChannel.appendLine('🕒 [UpdateManager] Cleared stale update state from previous session');
         
         // Check if it's time for an update check
         const lastCheck = this.context.globalState.get<number>(UpdateManager.LAST_CHECK_KEY, 0);
@@ -35,13 +51,12 @@ export class UpdateManager implements vscode.Disposable {
         this.outputChannel.appendLine(`🕒 [UpdateManager] Time since last check: ${Math.round(timeSinceLastCheck / 1000)} seconds`);
         this.outputChannel.appendLine(`🕒 [UpdateManager] Check interval: ${UpdateManager.CHECK_INTERVAL / 1000} seconds`);
         
-        // If it's been more than 30 seconds, check immediately
+        // Run check if interval has elapsed
         if (timeSinceLastCheck >= UpdateManager.CHECK_INTERVAL || lastCheck === 0) {
             this.outputChannel.appendLine('🕒 [UpdateManager] Time for immediate check...');
-            // Run check in background to avoid blocking initialization
-            setTimeout(() => this.checkForUpdates(), 1000);
+            setTimeout(() => this.checkForUpdates(), 3000);
         } else {
-            this.outputChannel.appendLine('🕒 [UpdateManager] Recent check found, skipping immediate check');
+            this.outputChannel.appendLine('🕒 [UpdateManager] Recent check exists, skipping startup check');
         }
         
         // Set up periodic timer
@@ -71,7 +86,7 @@ export class UpdateManager implements vscode.Disposable {
     /**
      * Force an immediate update check
      */
-    async forceUpdateCheck(): Promise<string[]> {
+    async forceUpdateCheck(): Promise<SkillUpdateEntry[]> {
         this.outputChannel.appendLine('🕒 [UpdateManager] Force update check requested...');
         this.outputChannel.show(); // Force show the output channel
         return await this.checkForUpdates();
@@ -80,43 +95,38 @@ export class UpdateManager implements vscode.Disposable {
     /**
      * Check for updates and store the results
      */
-    private async checkForUpdates(): Promise<string[]> {
+    private async checkForUpdates(): Promise<SkillUpdateEntry[]> {
         try {
             this.outputChannel.appendLine('🔍 [UpdateManager] Starting update check...');
-            this.outputChannel.show(); // Force show the output channel
+            this.outputChannel.show();
             
-            // Check for updates using the UpdateCheckService
             this.outputChannel.appendLine('🔍 [UpdateManager] Calling updateCheckService.checkSkillUpdates...');
             const updateInfos = await this.updateCheckService.checkSkillUpdates('both');
             this.outputChannel.appendLine(`🔍 [UpdateManager] checkSkillUpdates returned ${updateInfos.length} results`);
             
-            // Log each update info for debugging
             updateInfos.forEach((info, index) => {
                 this.outputChannel.appendLine(`🔍 [UpdateManager] Update info ${index + 1}: ${info.name} - hasUpdate: ${info.hasUpdate} - scope: ${info.scope}`);
                 this.outputChannel.appendLine(`   Current hash: ${info.currentHash}`);
-                this.outputChannel.appendLine(`   Latest hash: ${info.latestHash}`); 
+                this.outputChannel.appendLine(`   Latest hash: ${info.latestHash}`);
                 this.outputChannel.appendLine(`   Source: ${info.source}`);
             });
             
-            // Extract skill names that have updates available
-            const skillsWithUpdates = updateInfos
+            // Extract entries with scope info
+            const skillsWithUpdates: SkillUpdateEntry[] = updateInfos
                 .filter(info => info.hasUpdate)
-                .map(info => info.name);
+                .map(info => ({ name: info.name, scope: info.scope }));
             
             this.outputChannel.appendLine(`🔍 [UpdateManager] Updates available: ${skillsWithUpdates.length} skills`);
-            this.outputChannel.appendLine(`🔍 [UpdateManager] Skills: ${skillsWithUpdates.join(', ')}`);
+            this.outputChannel.appendLine(`🔍 [UpdateManager] Skills: ${skillsWithUpdates.map(s => `${s.name}(${s.scope})`).join(', ')}`);
             
-            // Store results in global state
             await this.context.globalState.update(UpdateManager.UPDATE_CHECK_KEY, skillsWithUpdates);
             await this.context.globalState.update(UpdateManager.LAST_CHECK_KEY, Date.now());
             
             this.outputChannel.appendLine(`🔍 [UpdateManager] Stored ${skillsWithUpdates.length} updates in globalState`);
             
-            // Fire event to notify tree provider
             this._onDidUpdateChange.fire(skillsWithUpdates);
             this.outputChannel.appendLine(`🔍 [UpdateManager] Fired onDidUpdateChange event`);
             
-            // Show notification if updates are available
             if (skillsWithUpdates.length > 0) {
                 this.outputChannel.appendLine(`🔍 [UpdateManager] Showing notification for ${skillsWithUpdates.length} updates`);
                 const action = await vscode.window.showInformationMessage(
@@ -144,28 +154,32 @@ export class UpdateManager implements vscode.Disposable {
     /**
      * Get list of skills that have updates available
      */
-    getSkillsWithUpdatesAvailable(): string[] {
-        return this.context.globalState.get<string[]>(UpdateManager.UPDATE_CHECK_KEY, []);
+    getSkillsWithUpdatesAvailable(): SkillUpdateEntry[] {
+        return this.context.globalState.get<SkillUpdateEntry[]>(UpdateManager.UPDATE_CHECK_KEY, []);
     }
     
     /**
-     * Check if a specific skill has an update available
+     * Check if a specific skill has an update available (scope-aware)
      */
-    hasUpdateAvailable(skillName: string): boolean {
+    hasUpdateAvailable(skillName: string, scope?: 'global' | 'project'): boolean {
         const skillsWithUpdates = this.getSkillsWithUpdatesAvailable();
-        return skillsWithUpdates.includes(skillName);
+        if (scope) {
+            return skillsWithUpdates.some(s => s.name === skillName && s.scope === scope);
+        }
+        return skillsWithUpdates.some(s => s.name === skillName);
     }
     
     /**
-     * Mark a skill as updated (remove from available updates list)
+     * Mark a skill as updated in a specific scope
      */
-    async markSkillAsUpdated(skillName: string): Promise<void> {
+    async markSkillAsUpdated(skillName: string, scope?: 'global' | 'project'): Promise<void> {
         const currentUpdates = this.getSkillsWithUpdatesAvailable();
-        const updatedList = currentUpdates.filter(name => name !== skillName);
+        const updatedList = scope
+            ? currentUpdates.filter(s => !(s.name === skillName && s.scope === scope))
+            : currentUpdates.filter(s => s.name !== skillName);
         await this.context.globalState.update(UpdateManager.UPDATE_CHECK_KEY, updatedList);
-        this.outputChannel.appendLine(`✅ [UpdateManager] Marked ${skillName} as updated`);
+        this.outputChannel.appendLine(`✅ [UpdateManager] Marked ${skillName} (${scope || 'all'}) as updated`);
         
-        // Fire event to notify tree provider
         this._onDidUpdateChange.fire(updatedList);
     }
     
@@ -173,11 +187,21 @@ export class UpdateManager implements vscode.Disposable {
      * Clear all update notifications
      */
     async clearAllUpdates(): Promise<void> {
+        const currentUpdates = this.getSkillsWithUpdatesAvailable();
         await this.context.globalState.update(UpdateManager.UPDATE_CHECK_KEY, []);
-        this.outputChannel.appendLine('🗑️ [UpdateManager] Cleared all update notifications');
+        this.outputChannel.appendLine(`🗑️ [UpdateManager] Cleared ${currentUpdates.length} update notifications`);
         
-        // Fire event to notify tree provider
         this._onDidUpdateChange.fire([]);
+    }
+    
+    /**
+     * Debug method to show current state
+     */
+    getDebugState(): { availableUpdates: SkillUpdateEntry[], lastCheck: number } {
+        return {
+            availableUpdates: this.getSkillsWithUpdatesAvailable(),
+            lastCheck: this.context.globalState.get<number>(UpdateManager.LAST_CHECK_KEY, 0)
+        };
     }
     
     /**

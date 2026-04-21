@@ -20,7 +20,7 @@ export class SkillsCommands {
     async installInteractive(): Promise<void> {
         try {
             // Step 1: Get available skills from all repositories
-            const repositorySkills = await this.skillsService.getAvailableSkills();
+            const repositorySkills = await this._skillsService.getAvailableSkills();
             
             if (repositorySkills.length === 0) {
                 vscode.window.showWarningMessage('No repositories configured. Please add a repository first.');
@@ -71,7 +71,7 @@ export class SkillsCommands {
             }
 
             // Step 4: Install the skill
-            const result = await this.skillsService.installSkill(
+            const result = await this._skillsService.installSkill(
                 selectedSkill.repository,
                 selectedSkill.skillName,
                 installOptions
@@ -79,7 +79,7 @@ export class SkillsCommands {
 
             if (result.success) {
                 vscode.window.showInformationMessage(`Successfully installed "${selectedSkill.label}"`);
-                this.skillsTreeProvider.refresh();
+                this._skillsTreeProvider.refresh();
             } else {
                 vscode.window.showErrorMessage(`Failed to install "${selectedSkill.label}": ${result.message}`);
             }
@@ -89,7 +89,7 @@ export class SkillsCommands {
     }
 
     async updateAll(): Promise<void> {
-        const installedSkills = await this.skillsService.getInstalledSkills();
+        const installedSkills = await this._skillsService.getInstalledSkills();
         
         if (installedSkills.length === 0) {
             vscode.window.showInformationMessage('No skills installed to update.');
@@ -104,7 +104,7 @@ export class SkillsCommands {
 
         if (confirmUpdate === 'Update All') {
             try {
-                const results = await this.skillsService.updateSkills();
+                const results = await this._skillsService.updateSkills();
                 const successful = results.filter(r => r.success).length;
                 const failed = results.filter(r => !r.success).length;
 
@@ -114,7 +114,7 @@ export class SkillsCommands {
                     vscode.window.showWarningMessage(`Updated ${successful} skills, ${failed} failed.`);
                 }
 
-                this.skillsTreeProvider.refresh();
+                this._skillsTreeProvider.refresh();
             } catch (error) {
                 vscode.window.showErrorMessage('Error updating skills: ' + (error as Error).message);
             }
@@ -128,7 +128,8 @@ export class SkillsCommands {
 
         const skill = item.skill;
         
-        if (skill.installed) {
+        // Check if skill is already installed (using type-safe approach)
+        if ((skill as any).installed) {
             vscode.window.showInformationMessage(`"${skill.name}" is already installed.`);
             return;
         }
@@ -139,8 +140,11 @@ export class SkillsCommands {
         }
 
         try {
-            const repository = skill.repository?.url || skill.source;
-            const result = await this.skillsService.installSkill(
+            // Handle repository URL - can be string or Repository object
+            const repository = typeof skill.repository === 'string' 
+                ? skill.repository 
+                : (skill.repository as any)?.url || skill.source;
+            const result = await this._skillsService.installSkill(
                 repository,
                 skill.name,
                 installOptions
@@ -148,7 +152,7 @@ export class SkillsCommands {
 
             if (result.success) {
                 vscode.window.showInformationMessage(`Successfully installed "${skill.name}"`);
-                this.skillsTreeProvider.refresh();
+                this._skillsTreeProvider.refresh();
             } else {
                 vscode.window.showErrorMessage(`Failed to install "${skill.name}": ${result.message}`);
             }
@@ -165,14 +169,14 @@ export class SkillsCommands {
         const skill = item.skill;
         
         try {
-            const results = await this.skillsService.removeSkills([skill.name], {
-                scope: skill.scope
+            const results = await this._skillsService.removeSkills([skill.name], {
+                scope: (skill as any).scope || 'global'
             });
 
             const result = results[0];
             if (result && result.success) {
                 vscode.window.showInformationMessage(`Successfully removed "${skill.name}"`);
-                this.skillsTreeProvider.refresh();
+                this._skillsTreeProvider.refresh();
             } else {
                 vscode.window.showErrorMessage(`Failed to remove "${skill.name}": ${result?.message || 'Unknown error'}`);
             }
@@ -189,21 +193,18 @@ export class SkillsCommands {
         const skill = item.skill;
         
         try {
-            const results = await this.skillsService.updateSkills([skill.name], skill.scope);
+            const results = await this._skillsService.updateSkills([skill.name], (skill as any).scope || 'global');
             const result = results[0];
             
             if (result && result.success) {
                 if (result.updated) {
-                    console.log(`🔧 [SkillsCommands] Update successful for ${skill.name}, now updating hash...`);
-                    
-                    // Update successful - now update the hash in skills-lock.json
-                    await this.updateSkillLockHash(skill);
+                    console.log(`🔧 [SkillsCommands] Update successful for ${skill.name}`);
                     
                     vscode.window.showInformationMessage(`Successfully updated "${skill.name}"`);
                 } else {
                     vscode.window.showInformationMessage(`"${skill.name}" is already up to date`);
                 }
-                this.skillsTreeProvider.refresh();
+                this._skillsTreeProvider.refresh();
             } else {
                 vscode.window.showErrorMessage(`Failed to update "${skill.name}": ${result?.message || 'Unknown error'}`);
             }

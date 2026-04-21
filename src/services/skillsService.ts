@@ -245,6 +245,8 @@ export class SkillsService {
 
     // Update skills
     async updateSkills(skillNames?: string[], scope?: 'global' | 'project'): Promise<UpdateResult[]> {
+        console.log(`🔄 [SkillsService] updateSkills called with skillNames:`, skillNames, `scope:`, scope);
+        
         const progressOptions = {
             location: vscode.ProgressLocation.Notification,
             title: skillNames ? `Updating ${skillNames.length} skill(s)...` : 'Updating all skills...',
@@ -252,9 +254,13 @@ export class SkillsService {
         };
 
         return vscode.window.withProgress(progressOptions, async () => {
-            return this.cliService.updateSkills(skillNames, {
+            const cliOptions = {
                 global: scope === 'global'
-            });
+            };
+            
+            console.log(`🔄 [SkillsService] Calling CLI with options:`, cliOptions);
+            
+            return this.cliService.updateSkills(skillNames, cliOptions);
         });
     }
 

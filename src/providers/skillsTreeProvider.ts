@@ -101,12 +101,12 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
         });
     }
     
-    // ← NUEVO: Helper method to check if a skill has update available
-    private hasUpdateAvailable(skillName: string): boolean {
+    // Helper method to check if a skill has update available (scope-aware)
+    private hasUpdateAvailable(skillName: string, scope?: 'global' | 'project'): boolean {
         if (!this.updateManager) {
             return false;
         }
-        return this.updateManager.hasUpdateAvailable(skillName);
+        return this.updateManager.hasUpdateAvailable(skillName, scope);
     }
     
     // Call this AFTER tree view is registered
@@ -327,7 +327,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
                     vscode.TreeItemCollapsibleState.None,
                     skill,
                     'skill',
-                    this.hasUpdateAvailable(skill.name)  // ← NUEVO: Check for updates
+                    this.hasUpdateAvailable(skill.name, 'project')
                 )
             );
             
@@ -339,7 +339,7 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
                     vscode.TreeItemCollapsibleState.None,
                     skill,
                     'skill',
-                    this.hasUpdateAvailable(skill.name)  // ← NUEVO: Check for updates
+                    this.hasUpdateAvailable(skill.name, 'global')
                 )
             );
             

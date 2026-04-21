@@ -28,394 +28,346 @@ export interface GitHubTreeResponse {
 
 export class UpdateCheckService {
     private outputChannel: vscode.OutputChannel | undefined;
-    
+
     constructor(outputChannel?: vscode.OutputChannel) {
         this.outputChannel = outputChannel;
     }
-    
+
     private log(message: string) {
         if (this.outputChannel) {
             this.outputChannel.appendLine(message);
-        } else {
-            console.log(message);
         }
+        console.log(message);
     }
-    
+
+    // ============================================
+    // Public API
+    // ============================================
+
     /**
-     * Check for skill updates using GitHub Trees API (same as CLI)
+     * Check for skill updates using GitHub Trees API.
+     * Unified logic for both global and project scopes.
+     * Uses skillFolderHash (GitHub tree SHA) for comparison in both scopes.
      */
     async checkSkillUpdates(scope: 'global' | 'project' | 'both' = 'both'): Promise<SkillUpdateInfo[]> {
         const results: SkillUpdateInfo[] = [];
-        
-        this.log(`🔍 [UpdateCheckService] Starting skill updates check for scope: ${scope}`);
-        this.log(`🔍 [UpdateCheckService] Current working directory: ${process.cwd()}`);
-        this.log(`🔍 [UpdateCheckService] VS Code workspace folders: ${vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath).join(', ')}`);
-        
+
+        this.log(`🔍 [UpdateCheck] Starting update check (scope: ${scope})`);
+
         if (scope === 'global' || scope === 'both') {
             try {
-                this.log(`🔍 [UpdateCheckService] Checking global skills...`);
-                const globalUpdates = await this.checkGlobalSkillUpdates();
-                this.log(`🔍 [UpdateCheckService] Found ${globalUpdates.length} global skills`);
-                results.push(...globalUpdates);
-            } catch (error) {
-                console.error('Error checking global skills:', error);
+                const globalResults = await this.checkLockFile(this.getGlobalLockPath(), 'global');
+                results.push(...globalResults);
+            } catch (error: any) {
+                this.log(`❌ [UpdateCheck] Error checking global: ${error.message}`);
             }
         }
-        
+
         if (scope === 'project' || scope === 'both') {
             try {
-                this.log(`🔍 [UpdateCheckService] Checking project skills...`);
-                const projectUpdates = await this.checkProjectSkillUpdates();
-                this.log(`🔍 [UpdateCheckService] Found ${projectUpdates.length} project skills`);
-                results.push(...projectUpdates);
-            } catch (error) {
-                console.error('Error checking project skills:', error);
+                const projectLockPath = this.getProjectLockPath();
+                if (projectLockPath) {
+                    const projectResults = await this.checkLockFile(projectLockPath, 'project');
+                    results.push(...projectResults);
+                }
+            } catch (error: any) {
+                this.log(`❌ [UpdateCheck] Error checking project: ${error.message}`);
             }
         }
-        
-        this.log(`🔍 [UpdateCheckService] Total results: ${results.length} skills checked`);
-        this.log(`🔍 [UpdateCheckService] Skills with updates: ${results.filter(r => r.hasUpdate).length}`);
-        
-        // Log detailed results for debugging
-        results.forEach((result, index) => {
-            this.log(`🔍 [UpdateCheckService] Result ${index + 1}: ${result.name} (${result.scope}) - Update: ${result.hasUpdate}`);
-            if (result.hasUpdate) {
-                this.log(`   Current: ${result.currentHash}`);
-                this.log(`   Latest: ${result.latestHash}`);
+
+        this.log(`🔍 [UpdateCheck] Total: ${results.length} skills, ${results.filter(r => r.hasUpdate).length} with updates`);
+        results.forEach((r, i) => {
+            if (r.hasUpdate) {
+                this.log(`   ${i + 1}. ${r.name} (${r.scope}) UPDATE: ${r.currentHash.substring(0, 10)}… → ${r.latestHash.substring(0, 10)}…`);
             } else {
-                this.log(`   Hash: ${result.currentHash} (no change)`);
+                this.log(`   ${i + 1}. ${r.name} (${r.scope}) up-to-date`);
             }
         });
-        
+
         return results;
     }
-    
-    private async checkGlobalSkillUpdates(): Promise<SkillUpdateInfo[]> {
-        const globalLockPath = this.getGlobalLockPath();
-        console.log(`🔍 [UpdateCheckService] Checking global lock file: ${globalLockPath}`);
-        
-        if (!fs.existsSync(globalLockPath)) {
-            console.log(`🔍 [UpdateCheckService] Global lock file does not exist: ${globalLockPath}`);
+
+    /**
+     * Enrich a skill entry in a lock file with skillFolderHash + skillPath.
+     * Used as post-install/post-update hook to enable update tracking.
+     */
+    async enrichLockEntry(skillName: string, lockFilePath: string, force: boolean = false): Promise<boolean> {
+        this.log(`📝 [Enrich] Enriching ${skillName} in ${path.basename(lockFilePath)} (force: ${force})`);
+
+        if (!fs.existsSync(lockFilePath)) {
+            this.log(`📝 [Enrich] Lock file not found: ${lockFilePath}`);
+            return false;
+        }
+
+        const lockContent = JSON.parse(fs.readFileSync(lockFilePath, 'utf8'));
+        const entry = lockContent.skills?.[skillName];
+
+        if (!entry) {
+            this.log(`📝 [Enrich] Skill ${skillName} not found in lock file`);
+            return false;
+        }
+
+        if (!this.isGitHubSkill(entry)) {
+            this.log(`📝 [Enrich] Skipping ${skillName}: not a GitHub skill`);
+            return false;
+        }
+
+        // Skip if already enriched, unless force is true (post-install always forces)
+        if (!force && entry.skillFolderHash && entry.skillFolderHash.trim() !== '' && entry.skillPath) {
+            this.log(`📝 [Enrich] ${skillName} already enriched, skipping`);
+            return true;
+        }
+
+        try {
+            const token = await this.getGitHubToken();
+            const ownerRepo = this.normalizeGitHubUrl(entry.source);
+            this.log(`📝 [Enrich] Fetching tree for ${ownerRepo}...`);
+
+            const tree = await this.fetchRepoTree(ownerRepo, token, entry.ref);
+            if (!tree) {
+                this.log(`📝 [Enrich] Could not fetch tree for ${ownerRepo}`);
+                return false;
+            }
+
+            // Always discover skillPath from tree (don't trust CLI value, it can be wrong)
+            const skillPath = this.discoverSkillPath(tree, skillName) || entry.skillPath;
+            if (!skillPath) {
+                this.log(`📝 [Enrich] Could not discover skillPath for ${skillName}`);
+                return false;
+            }
+
+            const folderHash = this.getSkillFolderHashFromTree(tree, skillPath);
+            if (!folderHash) {
+                this.log(`📝 [Enrich] Could not get folder hash for ${skillName} at ${skillPath}`);
+                return false;
+            }
+
+            // Write enriched data back to lock file
+            entry.skillFolderHash = folderHash;
+            entry.skillPath = skillPath;
+            fs.writeFileSync(lockFilePath, JSON.stringify(lockContent, null, 2) + '\n', 'utf8');
+
+            this.log(`📝 [Enrich] ✅ ${skillName}: skillPath=${skillPath}, hash=${folderHash}`);
+            return true;
+        } catch (error: any) {
+            this.log(`📝 [Enrich] Error enriching ${skillName}: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Enrich all skills in a lock file that are missing skillFolderHash.
+     * Called during update checks to auto-fix entries that don't have tracking data.
+     */
+    async enrichAllInLock(lockFilePath: string): Promise<number> {
+        if (!fs.existsSync(lockFilePath)) {
+            return 0;
+        }
+
+        const lockContent = JSON.parse(fs.readFileSync(lockFilePath, 'utf8'));
+        const skills = lockContent.skills || {};
+        let enriched = 0;
+
+        for (const skillName of Object.keys(skills)) {
+            const entry = skills[skillName];
+            if (!this.isGitHubSkill(entry)) continue;
+            if (entry.skillFolderHash && entry.skillFolderHash.trim() !== '') continue;
+
+            const result = await this.enrichLockEntry(skillName, lockFilePath);
+            if (result) enriched++;
+        }
+
+        return enriched;
+    }
+
+    // ============================================
+    // Core check logic
+    // ============================================
+
+    /**
+     * Check all skills in a lock file for updates.
+     * Unified logic: uses skillFolderHash + skillPath for both global and project.
+     * Groups skills by repo to minimize API calls (one tree fetch per repo).
+     */
+    private async checkLockFile(lockFilePath: string, scope: 'global' | 'project'): Promise<SkillUpdateInfo[]> {
+        if (!fs.existsSync(lockFilePath)) {
+            this.log(`🔍 [UpdateCheck] Lock file not found: ${lockFilePath}`);
             return [];
         }
-        
-        console.log(`🔍 [UpdateCheckService] Reading global lock file...`);
-        const lockContent = JSON.parse(fs.readFileSync(globalLockPath, 'utf8'));
-        console.log(`🔍 [UpdateCheckService] Global lock file version: ${lockContent.version}`);
-        console.log(`🔍 [UpdateCheckService] Global lock file skills: ${Object.keys(lockContent.skills || {}).length}`);
-        
-        // Log the structure of each skill for debugging
-        Object.entries(lockContent.skills || {}).forEach(([name, skill]) => {
-            console.log(`🔍 [UpdateCheckService] Global skill ${name}:`, {
-                hasSource: !!(skill as any).source,
-                hasSourceType: !!(skill as any).sourceType,
-                hasSkillFolderHash: !!(skill as any).skillFolderHash,
-                hasSkillPath: !!(skill as any).skillPath,
-                version: lockContent.version
-            });
-        });
-        
-        const skills = await this.checkSkillsFromLock(lockContent.skills || {}, 'global');
-        return skills;
-    }
-    
-    private async checkProjectSkillUpdates(): Promise<SkillUpdateInfo[]> {
-        // Use workspace folder instead of process.cwd() for VS Code compatibility
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        const basePath = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
-        
-        const projectLockPath = path.join(basePath, 'skills-lock.json');
-        console.log(`🔍 [UpdateCheckService] Checking project lock file: ${projectLockPath}`);
-        console.log(`🔍 [UpdateCheckService] Base path: ${basePath}`);
-        console.log(`🔍 [UpdateCheckService] process.cwd(): ${process.cwd()}`);
-        
-        if (!fs.existsSync(projectLockPath)) {
-            console.log(`🔍 [UpdateCheckService] Project lock file does not exist: ${projectLockPath}`);
-            return [];
+
+        const lockContent = JSON.parse(fs.readFileSync(lockFilePath, 'utf8'));
+        const skills = lockContent.skills || {};
+        const skillNames = Object.keys(skills);
+        this.log(`🔍 [UpdateCheck] ${scope} lock: ${skillNames.length} skills`);
+
+        // First pass: auto-enrich any skills missing skillFolderHash
+        let needsEnrichment = false;
+        for (const name of skillNames) {
+            const entry = skills[name];
+            if (this.isGitHubSkill(entry) && (!entry.skillFolderHash || entry.skillFolderHash.trim() === '')) {
+                needsEnrichment = true;
+                break;
+            }
         }
-        
-        console.log(`🔍 [UpdateCheckService] Reading project lock file...`);
-        const lockContent = JSON.parse(fs.readFileSync(projectLockPath, 'utf8'));
-        console.log(`🔍 [UpdateCheckService] Project lock file version: ${lockContent.version}`);
-        console.log(`🔍 [UpdateCheckService] Project lock file skills: ${Object.keys(lockContent.skills || {}).length}`);
-        
-        // Log the structure of each skill for debugging
-        Object.entries(lockContent.skills || {}).forEach(([name, skill]) => {
-            console.log(`🔍 [UpdateCheckService] Project skill ${name}:`, {
-                hasSource: !!(skill as any).source,
-                hasSourceType: !!(skill as any).sourceType,
-                hasSkillFolderHash: !!(skill as any).skillFolderHash,
-                hasSkillPath: !!(skill as any).skillPath,
-                hasComputedHash: !!(skill as any).computedHash,
-                version: lockContent.version
-            });
-        });
-        
-        const skills = await this.checkSkillsFromLock(lockContent.skills || {}, 'project');
-        return skills;
-    }
-    
-    private async checkSkillsFromLock(skills: Record<string, any>, scope: 'global' | 'project'): Promise<SkillUpdateInfo[]> {
-this.log(`🔍 [UpdateCheckService] checkSkillsFromLock() - processing ${scope} skills`);
-        this.log(`🔍 [UpdateCheckService] Skills to process: ${Object.keys(skills).join(', ')}`);
-        
+        if (needsEnrichment) {
+            this.log(`🔍 [UpdateCheck] Some ${scope} skills need enrichment, running auto-enrich...`);
+            const enriched = await this.enrichAllInLock(lockFilePath);
+            this.log(`🔍 [UpdateCheck] Auto-enriched ${enriched} skills`);
+            // Re-read the file after enrichment
+            const refreshed = JSON.parse(fs.readFileSync(lockFilePath, 'utf8'));
+            Object.assign(skills, refreshed.skills || {});
+        }
+
         const results: SkillUpdateInfo[] = [];
         const token = await this.getGitHubToken();
-        
-        for (const [skillName, entry] of Object.entries(skills)) {
-this.log(`🔍 [UpdateCheckService] Processing skill: ${skillName}`);
-            this.log(`🔍 [UpdateCheckService] Skill data: hasSkillFolderHash=${!!entry.skillFolderHash}, hasComputedHash=${!!entry.computedHash}, hasPath=${!!entry.skillPath}, sourceType=${entry.sourceType}, source=${entry.source}`);
-            
-            // Check if this is a GitHub-based skill (either github or git sourceType with github URL)
-            const isGitHubSkill = this.isGitHubSkill(entry);
-            if (!isGitHubSkill) {
-                this.log(`🔍 [UpdateCheckService] Skipping ${skillName}: not a GitHub skill`);
+
+        // Group skills by owner/repo to minimize API calls
+        const repoGroups = new Map<string, Array<{ skillName: string; entry: any }>>();
+
+        for (const [skillName, entry] of Object.entries(skills) as [string, any][]) {
+            if (!this.isGitHubSkill(entry)) {
+                this.log(`🔍 [UpdateCheck] Skip ${skillName}: not GitHub`);
                 continue;
             }
-            
-            // Get the hash to compare (prioritize skillFolderHash, fallback to computedHash)
-            const currentHash = entry.skillFolderHash || entry.computedHash;
-            if (!currentHash) {
-                this.log(`🔍 [UpdateCheckService] Skipping ${skillName}: no hash available`);
+            if (!entry.skillFolderHash || entry.skillFolderHash.trim() === '') {
+                this.log(`🔍 [UpdateCheck] Skip ${skillName}: no skillFolderHash after enrichment`);
                 continue;
             }
-            
-            try {
-                this.log(`🔍 [UpdateCheckService] Fetching latest hash for ${skillName}...`);
-                // For skills with skillPath, use the folder hash approach
-                // For skills without skillPath, use the full repo hash approach
-                let latestHash: string | null;
-                if (entry.skillPath) {
-                    this.log(`🔍 [UpdateCheckService] Using folder hash method for ${skillName}`);
-                    latestHash = await this.fetchSkillFolderHash(
-                        this.normalizeGitHubUrl(entry.source),
-                        entry.skillPath,
-                        token,
-                        entry.ref
-                    ).catch(error => {
-                        this.log(`🔍 [UpdateCheckService] Error fetching folder hash for ${skillName}: ${error}`);
-                        return null;
-                    });
-                } else {
-                    this.log(`🔍 [UpdateCheckService] Using commit hash method for ${skillName}`);
-                    latestHash = await this.fetchRepoCommitHash(
-                        this.normalizeGitHubUrl(entry.source),
-                        token,
-                        entry.ref
-                    ).catch(error => {
-                        this.log(`🔍 [UpdateCheckService] Error fetching commit hash for ${skillName}: ${error}`);
-                        return null;
+            if (!entry.skillPath) {
+                this.log(`🔍 [UpdateCheck] Skip ${skillName}: no skillPath`);
+                continue;
+            }
+
+            const ownerRepo = this.normalizeGitHubUrl(entry.source);
+            if (!repoGroups.has(ownerRepo)) {
+                repoGroups.set(ownerRepo, []);
+            }
+            repoGroups.get(ownerRepo)!.push({ skillName, entry });
+        }
+
+        // Fetch one tree per repo, then check all skills from that repo
+        for (const [ownerRepo, skillEntries] of repoGroups) {
+            this.log(`🔍 [UpdateCheck] Fetching tree for ${ownerRepo} (${skillEntries.length} skills)...`);
+
+            const ref = skillEntries[0]?.entry.ref;
+            const tree = await this.fetchRepoTree(ownerRepo, token, ref);
+
+            if (!tree) {
+                this.log(`🔍 [UpdateCheck] Could not fetch tree for ${ownerRepo}, marking all as no-update`);
+                for (const { skillName, entry } of skillEntries) {
+                    results.push({
+                        name: skillName,
+                        currentHash: entry.skillFolderHash,
+                        latestHash: entry.skillFolderHash,
+                        source: entry.source,
+                        hasUpdate: false,
+                        scope,
+                        skillPath: entry.skillPath,
+                        ref: entry.ref
                     });
                 }
-                
-                const hasUpdate = !!(latestHash && latestHash !== currentHash);
-                
-                this.log(`🔍 [UpdateCheckService] ${skillName} check result: currentHash=${currentHash}, latestHash=${latestHash}, hasUpdate=${hasUpdate}, method=${entry.skillPath ? 'folder' : 'commit'}`);
-                
+                continue;
+            }
+
+            for (const { skillName, entry } of skillEntries) {
+                const latestHash = this.getSkillFolderHashFromTree(tree, entry.skillPath);
+                const hasUpdate = !!(latestHash && latestHash !== entry.skillFolderHash);
+
                 results.push({
                     name: skillName,
-                    currentHash,
-                    latestHash: latestHash || currentHash,
+                    currentHash: entry.skillFolderHash,
+                    latestHash: latestHash || entry.skillFolderHash,
                     source: entry.source,
                     hasUpdate,
                     scope,
                     skillPath: entry.skillPath,
                     ref: entry.ref
                 });
-                
-                if (hasUpdate) {
-                    this.log(`🔍 [UpdateCheckService] Update available for ${skillName}: ${currentHash} -> ${latestHash}`);
-                }
-                
-            } catch (error) {
-                this.log(`🔍 [UpdateCheckService] Error checking ${skillName}: ${error}`);
-                // Add entry without update info on error
-                results.push({
-                    name: skillName,
-                    currentHash,
-                    latestHash: currentHash,
-                    source: entry.source,
-                    hasUpdate: false,
-                    scope,
-                    skillPath: entry.skillPath,
-                    ref: entry.ref
-                });
             }
         }
-        
-        this.log(`🔍 [UpdateCheckService] ${scope} check completed: ${results.length} skills checked, ${results.filter(r => r.hasUpdate).length} with updates`);
+
         return results;
     }
-    
+
+    // ============================================
+    // GitHub API
+    // ============================================
+
     /**
-     * Check if a skill entry is GitHub-based
+     * Fetch the full repo tree with one API call.
+     * Tries ref → main → master fallback.
      */
-    private isGitHubSkill(entry: any): boolean {
-        if (!entry.source) return false;
-        
-        // Check for explicit github sourceType
-        if (entry.sourceType === 'github') return true;
-        
-        // Check for git sourceType with GitHub URL (SSH or HTTPS)
-        if (entry.sourceType === 'git') {
-            const source = entry.source.toLowerCase();
-            return source.includes('github.com') || source.startsWith('git@github.com');
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Normalize GitHub URL to owner/repo format
-     */
-    private normalizeGitHubUrl(source: string): string {
-        // Handle SSH URLs: git@github.com:owner/repo.git
-        if (source.startsWith('git@github.com:')) {
-            return source
-                .replace('git@github.com:', '')
-                .replace('.git', '');
-        }
-        
-        // Handle HTTPS URLs: https://github.com/owner/repo
-        if (source.includes('github.com')) {
-            const match = source.match(/github\.com[/:]([^/]+\/[^/]+)/);
-            if (match) {
-                return match[1].replace('.git', '');
-            }
-        }
-        
-        // Already in owner/repo format or similar
-        return source;
-    }
-    
-    /**
-     * Fetch the latest commit SHA for a repository
-     */
-    private async fetchRepoCommitHash(
+    private async fetchRepoTree(
         ownerRepo: string,
-        token?: string,
-        ref = 'main'
-    ): Promise<string | null> {
-        return new Promise((resolve, reject) => {
-            const url = `https://api.github.com/repos/${ownerRepo}/commits/${ref}`;
-            
-            const options: https.RequestOptions = {
-                headers: {
-                    'User-Agent': 'VSCode-Skills-Extension',
-                    'Accept': 'application/vnd.github.v3+json',
-                    ...(token && { 'Authorization': `token ${token}` })
-                }
-            };
-            
-            this.log(`🔍 [UpdateCheckService] Fetching repo commit hash: ${url}`);
-            this.log(`🔍 [UpdateCheckService] Token available: ${!!token}`);
-            if (token) {
-                this.log(`🔍 [UpdateCheckService] Token prefix: ${token.substring(0, 7)}...`);
-            }
-            this.log(`🔍 [UpdateCheckService] Request headers: ${Object.keys(options.headers || {}).join(', ')}`);
-            
-            const req = https.get(url, options, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    try {
-                        if (res.statusCode !== 200) {
-                            this.log(`🔍 [UpdateCheckService] GitHub API responded with ${res.statusCode}: ${data.substring(0, 200)}`);
-                            if (ref === 'main') {
-                                // Try master branch as fallback
-                                this.log(`🔍 [UpdateCheckService] Trying master branch fallback`);
-                                this.fetchRepoCommitHash(ownerRepo, token, 'master').then(resolve).catch(reject);
-                                return;
-                            }
-                            resolve(null);
-                            return;
-                        }
-                        
-                        const commit = JSON.parse(data);
-                        const commitSha = commit.sha;
-                        this.log(`🔍 [UpdateCheckService] Latest commit SHA: ${commitSha}`);
-                        resolve(commitSha);
-                        
-                    } catch (error) {
-                        this.log(`🔍 [UpdateCheckService] Error parsing commit response: ${error}`);
-                        reject(error);
-                    }
-                });
-            });
-            
-            req.on('error', (error) => {
-                this.log(`🔍 [UpdateCheckService] Request error: ${error}`);
-                reject(error);
-            });
-            
-            req.on('timeout', () => {
-                this.log(`🔍 [UpdateCheckService] Request timeout for ${url}`);
-                req.destroy();
-                reject(new Error('GitHub API request timeout'));
-            });
-            
-            req.setTimeout(2000); // 2 second timeout
-        });
-    }
-    
-    private async fetchSkillFolderHash(
-        ownerRepo: string,
-        skillPath: string,
         token?: string,
         ref?: string
-    ): Promise<string | null> {
-        // Implementar la misma lógica que usa el CLI: GitHub Trees API
-        return new Promise((resolve, reject) => {
-            const branch = ref || 'main';
-            const url = `https://api.github.com/repos/${ownerRepo}/git/trees/${branch}?recursive=1`;
-            
+    ): Promise<GitHubTreeResponse | null> {
+        const branch = ref || 'main';
+        const result = await this.githubGet<GitHubTreeResponse>(
+            `/repos/${ownerRepo}/git/trees/${branch}?recursive=1`,
+            token
+        );
+
+        if (!result && branch === 'main') {
+            return this.githubGet<GitHubTreeResponse>(
+                `/repos/${ownerRepo}/git/trees/master?recursive=1`,
+                token
+            );
+        }
+
+        return result;
+    }
+
+    /**
+     * Generic GitHub API GET request with timeout.
+     */
+    private githubGet<T>(apiPath: string, token?: string): Promise<T | null> {
+        return new Promise((resolve) => {
+            const url = `https://api.github.com${apiPath}`;
             const options: https.RequestOptions = {
                 headers: {
-                    'User-Agent': 'Skills Manager Extension',
+                    'User-Agent': 'Skills-Manager-Extension',
                     'Accept': 'application/vnd.github.v3+json',
                     ...(token && { 'Authorization': `Bearer ${token}` })
                 }
             };
-            
+
             const req = https.get(url, options, (res) => {
                 let data = '';
-                res.on('data', chunk => data += chunk);
+                res.on('data', (chunk: string) => data += chunk);
                 res.on('end', () => {
-                    try {
-                        if (res.statusCode === 200) {
-                            const tree: GitHubTreeResponse = JSON.parse(data);
-                            const hash = this.getSkillFolderHashFromTree(tree, skillPath);
-                            resolve(hash);
-                        } else if (res.statusCode === 404 && branch === 'main') {
-                            // Fallback to master branch (same as CLI logic)
-                            this.fetchSkillFolderHash(ownerRepo, skillPath, token, 'master')
-                                .then(resolve)
-                                .catch(reject);
-                        } else {
-                            console.warn(`GitHub API returned ${res.statusCode} for ${ownerRepo}`);
+                    if (res.statusCode === 200) {
+                        try {
+                            resolve(JSON.parse(data) as T);
+                        } catch {
                             resolve(null);
                         }
-                    } catch (parseError) {
-                        reject(new Error(`Failed to parse GitHub API response: ${parseError}`));
+                    } else {
+                        this.log(`🔍 [GitHub] ${res.statusCode} for ${apiPath}`);
+                        resolve(null);
                     }
                 });
             });
-            
-            req.on('error', reject);
-            req.on('timeout', () => {
-                console.log(`🔍 [UpdateCheckService] Request timeout for ${url}`);
+
+            req.on('error', () => resolve(null));
+            req.setTimeout(10000, () => {
                 req.destroy();
-                reject(new Error('GitHub Trees API request timeout'));
+                resolve(null);
             });
-            req.setTimeout(2000); // 2 second timeout
         });
     }
-    
+
+    // ============================================
+    // Hash and path utilities
+    // ============================================
+
+    /**
+     * Extract folder hash from a tree response for a specific skill path.
+     * Same logic as CLI blob.ts getSkillFolderHashFromTree.
+     */
     private getSkillFolderHashFromTree(tree: GitHubTreeResponse, skillPath: string): string | null {
-        // Exact same logic as CLI blob.ts getSkillFolderHashFromTree
         let folderPath = skillPath.replace(/\\/g, '/');
-        
-        // Remove SKILL.md suffix to get folder path
+
         if (folderPath.endsWith('/SKILL.md')) {
             folderPath = folderPath.slice(0, -9);
         } else if (folderPath.endsWith('SKILL.md')) {
@@ -424,92 +376,114 @@ this.log(`🔍 [UpdateCheckService] Processing skill: ${skillName}`);
         if (folderPath.endsWith('/')) {
             folderPath = folderPath.slice(0, -1);
         }
-        
-        // Root-level skill
+
         if (!folderPath) {
             return tree.sha;
         }
-        
+
         const entry = tree.tree.find((e) => e.type === 'tree' && e.path === folderPath);
         return entry?.sha ?? null;
     }
-    
-    private getGlobalLockPath(): string {
+
+    /**
+     * Discover the skillPath for a skill by scanning the repo tree for SKILL.md files.
+     * Matches by folder name === skillName.
+     */
+    private discoverSkillPath(tree: GitHubTreeResponse, skillName: string): string | null {
+        const skillFiles = tree.tree.filter(e =>
+            e.type === 'blob' && e.path.endsWith('SKILL.md')
+        );
+
+        this.log(`📝 [Discover] Found ${skillFiles.length} SKILL.md files in tree`);
+
+        for (const file of skillFiles) {
+            const parts = file.path.split('/');
+            if (parts.length >= 2) {
+                const folderName = parts[parts.length - 2];
+                if (folderName === skillName) {
+                    this.log(`📝 [Discover] Matched ${skillName} → ${file.path}`);
+                    return file.path;
+                }
+            }
+        }
+
+        // Fallback: root-level SKILL.md (single-skill repo)
+        if (skillFiles.length === 1 && skillFiles[0].path === 'SKILL.md') {
+            this.log(`📝 [Discover] Single SKILL.md at root, using for ${skillName}`);
+            return 'SKILL.md';
+        }
+
+        this.log(`📝 [Discover] No match found for ${skillName}`);
+        return null;
+    }
+
+    /**
+     * Check if a skill entry is from a GitHub-hosted repo.
+     */
+    private isGitHubSkill(entry: any): boolean {
+        if (!entry?.source) return false;
+        if (entry.sourceType === 'github') return true;
+        if (entry.sourceType === 'git') {
+            const source = entry.source.toLowerCase();
+            return source.includes('github.com') || source.startsWith('git@github.com');
+        }
+        return false;
+    }
+
+    /**
+     * Normalize SSH/HTTPS GitHub URL to owner/repo format.
+     */
+    normalizeGitHubUrl(source: string): string {
+        if (source.startsWith('git@github.com:')) {
+            return source.replace('git@github.com:', '').replace('.git', '');
+        }
+        if (source.includes('github.com')) {
+            const match = source.match(/github\.com[/:]([^/]+\/[^/]+)/);
+            if (match) {
+                return match[1].replace('.git', '');
+            }
+        }
+        return source;
+    }
+
+    // ============================================
+    // Paths
+    // ============================================
+
+    getGlobalLockPath(): string {
         return path.join(os.homedir(), '.agents', '.skill-lock.json');
     }
-    
+
+    getProjectLockPath(): string | null {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) return null;
+        const lockPath = path.join(workspaceFolder.uri.fsPath, 'skills-lock.json');
+        return fs.existsSync(lockPath) ? lockPath : null;
+    }
+
+    // ============================================
+    // Authentication
+    // ============================================
+
     private async getGitHubToken(): Promise<string | undefined> {
-        this.log(`🔍 [UpdateCheckService] Getting GitHub token...`);
-        
-        // Debug: Show all environment variables that start with GIT or GITHUB
-        const envVars = Object.keys(process.env).filter(key => 
-            key.toUpperCase().includes('GIT') || key.toUpperCase().includes('GITHUB')
-        );
-        this.log(`🔍 [UpdateCheckService] Available Git-related env vars: ${envVars.join(', ')}`);
-        this.log(`🔍 [UpdateCheckService] GITHUB_TOKEN exists: ${!!process.env.GITHUB_TOKEN}`);
-        this.log(`🔍 [UpdateCheckService] GH_TOKEN exists: ${!!process.env.GH_TOKEN}`);
-        
-        // Try VS Code authentication API first
+        // 1. VS Code authentication API
         try {
             const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
-            if (session?.accessToken) {
-                this.log(`🔍 [UpdateCheckService] Found GitHub token from VS Code authentication (length: ${session.accessToken.length})`);
-                return session.accessToken;
-            }
-            
-            // Try to create session if none exists  
-            this.log(`🔍 [UpdateCheckService] No existing VS Code GitHub session, trying to create one...`);
-            const newSession = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
-            if (newSession?.accessToken) {
-                this.log(`🔍 [UpdateCheckService] Created new GitHub session (length: ${newSession.accessToken.length})`);
-                return newSession.accessToken;
-            }
-        } catch (error) {
-            this.log(`🔍 [UpdateCheckService] VS Code GitHub authentication failed: ${error.message}`);
-        }
-        
-        // Try environment variables as fallback (same order as CLI)
-        if (process.env.GITHUB_TOKEN) {
-            this.log(`🔍 [UpdateCheckService] Found GITHUB_TOKEN (length: ${process.env.GITHUB_TOKEN.length})`);
-            return process.env.GITHUB_TOKEN;
-        }
-        if (process.env.GH_TOKEN) {
-            this.log(`🔍 [UpdateCheckService] Found GH_TOKEN (length: ${process.env.GH_TOKEN.length})`);
-            return process.env.GH_TOKEN;
-        }
-        
-        // Try `gh auth token` command as fallback (same as CLI)
+            if (session?.accessToken) return session.accessToken;
+        } catch { /* ignore */ }
+
+        // 2. Environment variables
+        if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+        if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
+
+        // 3. gh CLI
         try {
-            this.log(`🔍 [UpdateCheckService] Trying 'gh auth token' command...`);
             const execAsync = promisify(exec);
-            
             const { stdout } = await execAsync('gh auth token');
-            const ghToken = stdout.trim();
-            if (ghToken && ghToken.length > 0) {
-                this.log(`🔍 [UpdateCheckService] Found token from 'gh auth token' (length: ${ghToken.length})`);
-                return ghToken;
-            }
-        } catch (error) {
-            this.log(`🔍 [UpdateCheckService] 'gh auth token' command failed: ${error.message}`);
-        }
-        
-        this.log(`🔍 [UpdateCheckService] No GitHub token found in VS Code, environment variables, or gh CLI`);
+            const token = stdout.trim();
+            if (token) return token;
+        } catch { /* ignore */ }
+
         return undefined;
-    }
-    
-    /**
-     * Get list of skills that have updates available
-     */
-    async getSkillsWithUpdates(scope: 'global' | 'project' | 'both' = 'both'): Promise<string[]> {
-        const updateInfo = await this.checkSkillUpdates(scope);
-        return updateInfo.filter(info => info.hasUpdate).map(info => info.name);
-    }
-    
-    /**
-     * Check if a specific skill has an update available
-     */
-    async hasUpdateAvailable(skillName: string, scope: 'global' | 'project' | 'both' = 'both'): Promise<boolean> {
-        const updateInfo = await this.checkSkillUpdates(scope);
-        return updateInfo.some(info => info.name === skillName && info.hasUpdate);
     }
 }
