@@ -466,7 +466,7 @@ export class UpdateCheckService {
     // ============================================
 
     private async getGitHubToken(): Promise<string | undefined> {
-        // 1. VS Code authentication API
+        // 1. VS Code authentication API (works in VS Code, not Cursor)
         try {
             const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
             if (session?.accessToken) return session.accessToken;
@@ -483,6 +483,10 @@ export class UpdateCheckService {
             const token = stdout.trim();
             if (token) return token;
         } catch { /* ignore */ }
+
+        // 4. Extension settings (configured via Configuration panel)
+        const settingsToken = vscode.workspace.getConfiguration('skills').get<string>('github.token', '');
+        if (settingsToken) return settingsToken;
 
         return undefined;
     }

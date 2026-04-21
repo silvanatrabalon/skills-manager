@@ -99,15 +99,6 @@ export class ConfigService {
         await vscode.workspace.getConfiguration('skills').update('autoUpdate', enabled, vscode.ConfigurationTarget.Global);
     }
 
-    // CLI settings
-    isAutoInstallCliEnabled(): boolean {
-        return vscode.workspace.getConfiguration('skills').get('autoInstallCli', true);
-    }
-
-    async setAutoInstallCli(enabled: boolean): Promise<void> {
-        await vscode.workspace.getConfiguration('skills').update('autoInstallCli', enabled, vscode.ConfigurationTarget.Global);
-    }
-
     // Utility methods
     generateRepositoryId(url: string): string {
         // Generate a unique ID based on URL

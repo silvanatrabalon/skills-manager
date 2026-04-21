@@ -1,147 +1,8 @@
 import * as vscode from 'vscode';
-import * as https from 'https';
 import { SkillsService } from './services/skillsService';
 import { SkillsTreeProvider } from './providers/skillsTreeProvider';
 import { SkillsCliService } from './services/cliWrapper';
 import { UpdateManager } from './services/updateManager';
-
-class GitHubService {
-    constructor(private _configService: ConfigService) {}
-
-    async getRepositoryContents(repoUrl: string, path: string = ''): Promise<any[]> {
-        return new Promise((resolve, reject) => {
-            try {
-                const token = this._configService.getGitHubToken();
-                
-                if (!token) {
-                    reject(new Error('GitHub token not configured'));
-                    return;
-                }
-
-                // Parse repository URL
-                const match = repoUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-                if (!match) {
-                    reject(new Error('Invalid GitHub repository URL'));
-                    return;
-                }
-
-                const [, owner, repo] = match;
-                const cleanRepo = repo.replace(/\.git$/, '');
-                
-                const url = `https://api.github.com/repos/${owner}/${cleanRepo}/contents/${path}`;
-                
-                const options = {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'User-Agent': 'Skills Manager Extension',
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
-                };
-
-                const req = https.get(url, options, (res) => {
-                    let data = '';
-                    res.on('data', chunk => data += chunk);
-                    res.on('end', () => {
-                        try {
-                            if (res.statusCode === 200) {
-                                const contents = JSON.parse(data);
-                                resolve(Array.isArray(contents) ? contents : [contents]);
-                            } else {
-                                const errorData = JSON.parse(data);
-                                reject(new Error(`GitHub API error (${res.statusCode}): ${errorData.message}`));
-                            }
-                        } catch (parseError) {
-                            reject(new Error(`Failed to parse GitHub API response: ${parseError}`));
-                        }
-                    });
-                });
-
-                req.on('error', reject);
-                req.setTimeout(10000, () => {
-                    req.destroy();
-                    reject(new Error('GitHub API request timeout'));
-                });
-
-            } catch (error) {
-                reject(error);
-            }
-        });
-    }
-
-    async findSkillsInRepository(repoUrl: string): Promise<any[]> {
-        try {
-            console.log(`🔍 [GitHub] Finding skills in repository: ${repoUrl}`);
-            const skills: any[] = [];
-
-            // Buscar la carpeta "skills" en la raíz
-            let skillsFolder = null;
-            try {
-                const rootContents = await this.getRepositoryContents(repoUrl);
-                skillsFolder = rootContents.find(item => 
-                    item.type === 'dir' && item.name.toLowerCase() === 'skills'
-                );
-                console.log(`🔍 [GitHub] Skills folder found: ${skillsFolder ? 'YES' : 'NO'}`);
-            } catch (error) {
-                console.error(`🔍 [GitHub] Error reading root directory: ${error}`);
-                return [];
-            }
-
-            if (skillsFolder) {
-                // Examinar cada subcarpeta en skills/ para obtener skill-name
-                try {
-                    const skillsContents = await this.getRepositoryContents(repoUrl, skillsFolder.path);
-                    console.log(`🔍 [GitHub] Found ${skillsContents.length} items in skills folder`);
-
-                    for (const item of skillsContents) {
-                        if (item.type === 'dir') {
-                            // Verificar que tiene SKILL.md (validación mínima)
-                            console.log(`🔍 [GitHub] Checking skill folder: ${item.name}`);
-                            
-                            try {
-                                const skillContents = await this.getRepositoryContents(repoUrl, item.path);
-                                const hasSkillMd = skillContents.some(file => 
-                                    file.type === 'file' && file.name.toUpperCase() === 'SKILL.MD'
-                                );
-
-                                if (hasSkillMd) {
-                                    // El skill-name es el nombre de la carpeta
-                                    skills.push({
-                                        name: item.name,
-                                        description: `Skill: ${item.name}`,
-                                        path: item.path,
-                                        repository: repoUrl,
-                                        skillName: item.name, // Para el CLI: skills add {skillName}
-                                        type: 'skill'
-                                    });
-                                    console.log(`✅ [GitHub] Valid skill: ${item.name}`);
-                                } else {
-                                    console.log(`❌ [GitHub] Invalid skill folder: ${item.name} (no SKILL.md)`);
-                                }
-                            } catch (subError) {
-                                console.error(`🔍 [GitHub] Error checking skill folder ${item.name}: ${subError}`);
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error(`🔍 [GitHub] Error reading skills folder: ${error}`);
-                }
-            } else {
-                console.log(`🔍 [GitHub] No 'skills' folder found in repository root`);
-            }
-
-            console.log(`🔍 [GitHub] Total valid skills found: ${skills.length}`);
-            skills.forEach(skill => {
-                console.log(`  - skill-name: ${skill.skillName}`);
-            });
-            
-            return skills;
-
-        } catch (error) {
-            console.error(`🔍 [GitHub] Failed to find skills in repository: ${(error as Error).message}`);
-            return [];
-        }
-    }
-}
 
 // Configuration service
 class ConfigService {
@@ -167,31 +28,7 @@ class ConfigService {
     }
 
     getGitHubToken(): string {
-        if (process.env.GITHUB_TOKEN) {
-            return process.env.GITHUB_TOKEN;
-        }
-        
-        const config = vscode.workspace.getConfiguration('skills');
-        return config.get<string>('github.token', '');
-    }
-
-    getGitHubTokenSource(): string {
-        if (process.env.GITHUB_TOKEN) {
-            return 'environment variable GITHUB_TOKEN';
-        }
-        
-        const config = vscode.workspace.getConfiguration('skills');
-        const configToken = config.get<string>('github.token', '');
-        if (configToken) {
-            return 'VS Code settings';
-        }
-        
-        return 'not configured';
-    }
-
-    isGitHubApiEnabled(): boolean {
-        const config = vscode.workspace.getConfiguration('skills');
-        return config.get<boolean>('github.enableApi', true);
+        return vscode.workspace.getConfiguration('skills').get<string>('github.token', '');
     }
 
     async updateGitHubToken(token: string): Promise<void> {
@@ -276,7 +113,6 @@ export async function activate(context: vscode.ExtensionContext) {
         console.log('🔧 [Extension] Initializing services...');
         const configService = new ConfigService(context);
         const cliService = new SkillsCliService();
-        const githubService = new GitHubService(configService);
         
         // Create tree providers
         console.log('🌳 [Extension] Creating tree providers...');
@@ -315,35 +151,30 @@ export async function activate(context: vscode.ExtensionContext) {
         });
         
         // Create a simple configuration provider
+        const configEmitter = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
         const configProvider = {
-            _onDidChangeTreeData: new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>(),
-            onDidChangeTreeData: this._onDidChangeTreeData?.event,
+            onDidChangeTreeData: configEmitter.event,
             
             getTreeItem: (element: vscode.TreeItem) => element,
             getChildren: async (): Promise<vscode.TreeItem[]> => {
-                const configItems: vscode.TreeItem[] = [];
-                const tokenSource = configService.getGitHubTokenSource();
+                const hasToken = !!configService.getGitHubToken();
                 
-                if (tokenSource !== 'not configured') {
-                    const tokenStatusItem = new vscode.TreeItem(`GitHub Token: ${tokenSource}`, vscode.TreeItemCollapsibleState.None);
+                if (hasToken) {
+                    const tokenStatusItem = new vscode.TreeItem('GitHub Token', vscode.TreeItemCollapsibleState.None);
                     tokenStatusItem.iconPath = new vscode.ThemeIcon('key');
                     tokenStatusItem.description = 'Configured ✓';
-                    tokenStatusItem.command = { command: 'skills.github.testToken', title: 'Test Token' };
-                    configItems.push(tokenStatusItem);
+                    tokenStatusItem.command = { command: 'skills.github.configureToken', title: 'Change Token' };
+                    return [tokenStatusItem];
                 } else {
                     const noTokenItem = new vscode.TreeItem('Configure GitHub Token', vscode.TreeItemCollapsibleState.None);
                     noTokenItem.iconPath = new vscode.ThemeIcon('key');
-                    noTokenItem.description = 'Required for API access';
+                    noTokenItem.description = 'For update checking';
                     noTokenItem.command = { command: 'skills.github.configureToken', title: 'Configure Token' };
-                    configItems.push(noTokenItem);
+                    return [noTokenItem];
                 }
-                
-                return configItems;
             },
             
-            refresh: function() {
-                this._onDidChangeTreeData.fire();
-            }
+            refresh: () => configEmitter.fire()
         };
         
         const configurationTreeView = vscode.window.createTreeView('skills.configuration', {
@@ -356,8 +187,7 @@ export async function activate(context: vscode.ExtensionContext) {
             await skillsProvider.refreshAsync();
             repoProvider.refresh();
             configProvider.refresh();
-            vscode.window.showInformationMessage('Refreshed Skills Manager - Check output for details');
-            cliService.showDebugOutput();
+            vscode.window.showInformationMessage('Refreshed Skills Manager');
         });
 
         const collapseAllCommand = vscode.commands.registerCommand('skills.collapseAll', async () => {
@@ -398,32 +228,13 @@ export async function activate(context: vscode.ExtensionContext) {
         });
 
         const configureTokenCommand = vscode.commands.registerCommand('skills.github.configureToken', async () => {
-            // Check if environment variable exists
-            const envToken = process.env.GITHUB_TOKEN;
-            if (envToken) {
-                const useEnv = await vscode.window.showInformationMessage(
-                    'GITHUB_TOKEN environment variable already exists. Use it or configure VS Code setting?',
-                    'Use Environment Variable', 'Configure VS Code Setting', 'Cancel'
-                );
-                
-                if (useEnv === 'Use Environment Variable') {
-                    vscode.window.showInformationMessage('Using existing GITHUB_TOKEN environment variable. Refreshing skills...');
-                    await skillsProvider.refreshAsync();
-                    return;
-                } else if (useEnv === 'Cancel') {
-                    return;
-                }
-                // Continue to VS Code configuration if "Configure VS Code Setting" was selected
-            }
-            
             const token = await vscode.window.showInputBox({
-                prompt: 'Enter your GitHub Personal Access Token (will be stored in VS Code settings)',
+                prompt: 'Enter your GitHub Personal Access Token',
                 password: true,
-                placeHolder: 'ghp_xxxxxxxxxxxxxxxxxxxx',
+                placeHolder: 'ghp_xxxxxxxxxxxxxxxxxxxx or github_pat_xxxx',
                 ignoreFocusOut: true,
                 validateInput: (value) => {
                     if (!value) {return 'Token is required';}
-                    if (!value.startsWith('ghp_')) {return 'Token should start with ghp_';}
                     if (value.length < 10) {return 'Token seems too short';}
                     return undefined;
                 }
@@ -431,32 +242,8 @@ export async function activate(context: vscode.ExtensionContext) {
             
             if (token) {
                 await configService.updateGitHubToken(token);
-                vscode.window.showInformationMessage('GitHub token configured in VS Code settings! Refreshing skills...');
-                await skillsProvider.refreshAsync();
-            }
-        });
-
-        const removeTokenCommand = vscode.commands.registerCommand('skills.github.removeToken', async () => {
-            await configService.updateGitHubToken('');
-            vscode.window.showInformationMessage('GitHub token removed. Refreshing skills...');
-            await skillsProvider.refreshAsync();
-        });
-
-        const testTokenCommand = vscode.commands.registerCommand('skills.github.testToken', async () => {
-            const token = configService.getGitHubToken();
-            const tokenSource = configService.getGitHubTokenSource();
-            
-            if (!token) {
-                vscode.window.showWarningMessage('No GitHub token found. Set GITHUB_TOKEN environment variable or use "Configure GitHub Token" command.');
-                return;
-            }
-            
-            try {
-                vscode.window.showInformationMessage(`Testing GitHub token from ${tokenSource}...`);
-                await githubService.getRepositoryContents('https://github.com/octocat/Hello-World');
-                vscode.window.showInformationMessage(`GitHub token (from ${tokenSource}) is valid and working!`);
-            } catch (error: any) {
-                vscode.window.showErrorMessage(`GitHub token test failed: ${error.message}`);
+                configProvider.refresh();
+                vscode.window.showInformationMessage('GitHub token configured!');
             }
         });
 
@@ -1124,8 +911,6 @@ export async function activate(context: vscode.ExtensionContext) {
             removeRepoCommand,
             skillSelectCommand,
             configureTokenCommand,
-            removeTokenCommand,
-            testTokenCommand,
             installSkillCommand,
             skillInstallCommand,
             skillUninstallCommand,

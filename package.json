@@ -267,11 +267,6 @@
           "description": "GitHub personal access token for API requests. Prevents rate limiting when fetching available skills.",
           "default": "",
           "scope": "machine-overridable"
-        },
-        "skills.github.enableApi": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable GitHub API integration to discover available skills in repositories"
         }
       }
     }
