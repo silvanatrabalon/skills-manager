@@ -22,14 +22,13 @@ A VS Code and Cursor extension that provides a graphical interface for managing 
 
 ## GitHub Authentication (for update checking)
 
-The extension checks for skill updates using the GitHub API. To enable this, install the [GitHub CLI](https://cli.github.com/) and log in:
+The extension checks for skill updates using the GitHub API. To enable this, configure your GitHub token from the **Configuration** section in the extension sidebar:
 
-```bash
-brew install gh
-gh auth login
-```
+1. Open the Skills Manager panel
+2. Click **"Configure GitHub Token"** under Configuration
+3. Paste your [GitHub Personal Access Token](https://github.com/settings/tokens)
 
-This works in both VS Code and Cursor. Without authentication, you can still install and manage skills but update checking will be limited to 60 requests/hour for public repos and won't work for private repos.
+Without a token, you can still install and manage skills but update checking will be limited to 60 requests/hour for public repos and won't work for private repos.
 
 ## Installation
 
