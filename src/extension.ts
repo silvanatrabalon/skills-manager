@@ -619,10 +619,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
                 // Determinar scope del skill para remover correctamente
                 const skillScope = skill.scope; // 'project' | 'global' | undefined
+                
+                console.log(`🗑️ [Uninstall] Skill scope detected: ${skillScope}`);
 
                 // Ejecutar el comando CLI via service (incluye --yes automáticamente)
                 const results = await skillsService.removeSkills([skillName], { 
-                    global: skillScope === 'global'
+                    scope: skillScope // ✅ CORREGIDO: usar 'scope' en vez de 'global'
                 });
                 const result = results[0];
                 

@@ -288,11 +288,13 @@ export class SkillsService {
         };
 
         return vscode.window.withProgress(progressOptions, async () => {
-            return this.cliService.removeSkills(skillNames, {
+            const cliOptions = {
                 global: options.scope === 'global',
                 agents: options.agents,
                 yes: true
-            });
+            };
+            
+            return this.cliService.removeSkills(skillNames, cliOptions);
         });
     }
 

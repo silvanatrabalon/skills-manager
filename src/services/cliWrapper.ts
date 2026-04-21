@@ -302,7 +302,10 @@ export class SkillsCliService {
             // Always use --yes for non-interactive mode
             args.push('--yes');
 
-            const result = await this.runCommand(args.join(' '));
+            const finalCommand = args.join(' ');
+            console.log(`🗑️ [CLI] Executing: ${finalCommand}`);
+
+            const result = await this.runCommand(finalCommand);
             return this.parseRemoveResults(result.stdout, skills);
         } catch (error) {
             this.outputChannel.appendLine(`Error removing skills: ${(error as Error).message}`);
