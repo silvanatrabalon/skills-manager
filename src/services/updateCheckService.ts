@@ -130,7 +130,7 @@ export class UpdateCheckService {
             }
 
             // Always discover skillPath from tree (don't trust CLI value, it can be wrong)
-            const skillPath = this.discoverSkillPath(tree, skillName) || entry.skillPath;
+            const skillPath = await this.discoverSkillPath(tree, skillName, ownerRepo) || entry.skillPath;
             if (!skillPath) {
                 this.log(`📝 [Enrich] Could not discover skillPath for ${skillName}`);
                 return false;
@@ -387,27 +387,106 @@ export class UpdateCheckService {
 
     /**
      * Discover the skillPath for a skill by scanning the repo tree for SKILL.md files.
-     * Matches by folder name === skillName.
+     * Reads each SKILL.md and matches by the 'name' field in frontmatter YAML.
+     * Falls back to directory name matching if API calls fail.
      */
-    private discoverSkillPath(tree: GitHubTreeResponse, skillName: string): string | null {
+    private async discoverSkillPath(tree: GitHubTreeResponse, skillName: string, ownerRepo: string): Promise<string | null> {
         const skillFiles = tree.tree.filter(e =>
             e.type === 'blob' && e.path.endsWith('SKILL.md')
         );
 
         this.log(`📝 [Discover] Found ${skillFiles.length} SKILL.md files in tree`);
 
+        // First attempt: Read SKILL.md content and match by 'name' field
+        let apiCallsFailed = false;
+        for (const file of skillFiles) {
+            this.log(`📝 [Discover] Checking ${file.path}...`);
+            
+            try {
+                const skillContent = await this.fetchFileContent(file.sha, ownerRepo);
+                if (!skillContent) {
+                    this.log(`📝 [Discover] Could not fetch content for ${file.path}`);
+                    continue;
+                }
+
+                const nameFromContent = this.extractNameFromSkillMd(skillContent);
+                if (nameFromContent === skillName) {
+                    this.log(`📝 [Discover] ✅ Exact name match: ${skillName} → ${file.path}`);
+                    return file.path;
+                }
+                
+                this.log(`📝 [Discover] Name mismatch: expected "${skillName}", got "${nameFromContent}"`);
+            } catch (error: any) {
+                this.log(`📝 [Discover] Error reading ${file.path}: ${error.message}`);
+                if (error.message.includes('HTTP 403') || error.message.includes('HTTP 429')) {
+                    apiCallsFailed = true;
+                    break; // Stop trying if we're hitting auth/rate limit issues
+                }
+                continue;
+            }
+        }
+
+        // Fallback: If API calls failed, use directory name matching (original logic)
+        if (apiCallsFailed || skillFiles.length > 10) { // Also fallback for large repos to avoid too many API calls
+            this.log(`📝 [Discover] API calls failed or too many files, falling back to directory matching`);
+            return this.fallbackDirectoryMatching(skillFiles, skillName);
+        }
+
+        // Fallback: Check root-level SKILL.md (single-skill repo)
+        const rootSkillFile = skillFiles.find(f => f.path === 'SKILL.md');
+        if (rootSkillFile) {
+            try {
+                const skillContent = await this.fetchFileContent(rootSkillFile.sha, ownerRepo);
+                if (skillContent) {
+                    const nameFromContent = this.extractNameFromSkillMd(skillContent);
+                    if (nameFromContent === skillName) {
+                        this.log(`📝 [Discover] ✅ Root SKILL.md name match: ${skillName}`);
+                        return 'SKILL.md';
+                    }
+                }
+            } catch (error: any) {
+                this.log(`📝 [Discover] Error reading root SKILL.md: ${error.message}`);
+            }
+        }
+
+        // Final fallback: Directory name matching
+        this.log(`📝 [Discover] No exact name match found, trying directory fallback`);
+        return this.fallbackDirectoryMatching(skillFiles, skillName);
+    }
+
+    /**
+     * Fallback method: Match by directory name (original logic)
+     */
+    private fallbackDirectoryMatching(skillFiles: any[], skillName: string): string | null {
         for (const file of skillFiles) {
             const parts = file.path.split('/');
             if (parts.length >= 2) {
                 const folderName = parts[parts.length - 2];
+                
+                // Exact match first
                 if (folderName === skillName) {
-                    this.log(`📝 [Discover] Matched ${skillName} → ${file.path}`);
+                    this.log(`📝 [Discover] Directory exact match: ${skillName} → ${file.path}`);
+                    return file.path;
+                }
+                
+                // Flexible matching: handle prefixes (e.g., "vercel-composition-patterns" vs "composition-patterns")
+                const skillNameWithoutPrefix = skillName.replace(/^[^-]+-/, ''); 
+                const folderNameWithoutPrefix = folderName.replace(/^[^-]+-/, '');
+                
+                if (skillNameWithoutPrefix === folderName || skillName === folderNameWithoutPrefix) {
+                    this.log(`📝 [Discover] Directory prefix match: ${skillName} → ${file.path} (via ${folderName})`);
+                    return file.path;
+                }
+                
+                // Even more flexible: check if the main part matches
+                if (skillNameWithoutPrefix === folderNameWithoutPrefix && skillNameWithoutPrefix.length > 0) {
+                    this.log(`📝 [Discover] Directory core match: ${skillName} → ${file.path} (core: ${skillNameWithoutPrefix})`);
                     return file.path;
                 }
             }
         }
 
-        // Fallback: root-level SKILL.md (single-skill repo)
+        // Root-level fallback
         if (skillFiles.length === 1 && skillFiles[0].path === 'SKILL.md') {
             this.log(`📝 [Discover] Single SKILL.md at root, using for ${skillName}`);
             return 'SKILL.md';
@@ -415,6 +494,93 @@ export class UpdateCheckService {
 
         this.log(`📝 [Discover] No match found for ${skillName}`);
         return null;
+    }
+
+    /**
+     * Fetch file content from GitHub using blob SHA.
+     */
+    private async fetchFileContent(blobSha: string, ownerRepo: string): Promise<string | null> {
+        const token = await this.getGitHubToken();
+        const url = `https://api.github.com/repos/${ownerRepo}/git/blobs/${blobSha}`;
+        
+        return new Promise((resolve, reject) => {
+            const options = {
+                headers: {
+                    'User-Agent': 'Skills-VS-Code-Extension',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                },
+                timeout: 5000 // Shorter timeout to fail fast
+            };
+
+            const req = https.get(url, options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => data += chunk);
+                res.on('end', () => {
+                    if (res.statusCode === 403) {
+                        reject(new Error(`HTTP 403 - Authentication failed or rate limited for ${url}`));
+                        return;
+                    }
+                    if (res.statusCode === 429) {
+                        reject(new Error(`HTTP 429 - Rate limit exceeded for ${url}`));
+                        return;
+                    }
+                    if (res.statusCode !== 200) {
+                        reject(new Error(`HTTP ${res.statusCode} - ${res.statusMessage || 'Unknown error'} for ${url}`));
+                        return;
+                    }
+                    try {
+                        const blob = JSON.parse(data);
+                        if (!blob.content) {
+                            reject(new Error('No content in blob response'));
+                            return;
+                        }
+                        // GitHub blob content is base64 encoded
+                        const content = Buffer.from(blob.content, 'base64').toString('utf-8');
+                        resolve(content);
+                    } catch (parseError: any) {
+                        reject(new Error(`Failed to parse blob response: ${parseError.message}`));
+                    }
+                });
+            }).on('error', (error: any) => {
+                reject(new Error(`Network error: ${error.message}`));
+            }).on('timeout', () => {
+                req.destroy();
+                reject(new Error('Request timeout'));
+            });
+
+            req.setTimeout(5000);
+        });
+    }
+
+    /**
+     * Extract the 'name' field from SKILL.md frontmatter YAML.
+     */
+    private extractNameFromSkillMd(content: string): string | null {
+        // Look for YAML frontmatter
+        const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+        if (!frontmatterMatch) {
+            return null;
+        }
+
+        const yamlContent = frontmatterMatch[1];
+        
+        // Simple YAML parsing for the 'name' field
+        // This handles most common cases without needing a full YAML parser
+        const nameMatch = yamlContent.match(/^name:\s*(.+)$/m);
+        if (!nameMatch) {
+            return null;
+        }
+
+        // Clean up the name value (remove quotes, trim whitespace)
+        let name = nameMatch[1].trim();
+        
+        // Remove surrounding quotes if present
+        if ((name.startsWith('"') && name.endsWith('"')) || 
+            (name.startsWith("'") && name.endsWith("'"))) {
+            name = name.slice(1, -1);
+        }
+
+        return name;
     }
 
     /**

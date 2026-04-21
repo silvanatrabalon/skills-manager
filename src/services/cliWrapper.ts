@@ -476,9 +476,13 @@ export class SkillsCliService {
     private parseSkillsList(output: string): Skill[] {
         this.outputChannel.appendLine(`=== PARSING SKILLS LIST ===`);
         
-        // Clean ANSI color codes
+        // Clean ANSI color codes - improved regex to catch all variants
         // eslint-disable-next-line no-control-regex
-        const cleanOutput = output.replace(/\x1b\[[0-9;]*m/g, '');
+        let cleanOutput = output.replace(/\x1b\[[0-9;]*m/g, ''); // Standard ANSI codes
+        cleanOutput = cleanOutput.replace(/\[([0-9;]+)m/g, ''); // Codes without escape char
+        cleanOutput = cleanOutput.replace(/\u001b\[[0-9;]*m/g, ''); // Unicode escape variant
+        
+        this.outputChannel.appendLine(`=== CLEANED OUTPUT ===\n${cleanOutput}\n=== END CLEANED ===`);
         
         const skills: Skill[] = [];
         const lines = cleanOutput.split('\n').filter(line => line.trim());
@@ -503,9 +507,9 @@ export class SkillsCliService {
                 continue;
             }
             
-            // Skill line format: "skill-name ~/path/to/skill"
-            // skill name is kebab-case, followed by a space, followed by the path
-            const match = line.match(/^([a-z0-9][a-z0-9\-]+)\s+(\S+)$/);
+            // Skill line format: "skill-name ~/path/to/skill" (path can have spaces)
+            // skill name is kebab-case, followed by a space, followed by the path (everything else)
+            const match = line.match(/^([a-z0-9][a-z0-9\-]+)\s+(.+)$/);
             if (match) {
                 const skillName = match[1];
                 const skillPath = match[2];
@@ -527,6 +531,9 @@ export class SkillsCliService {
                 });
                 
                 this.outputChannel.appendLine(`  -> Parsed skill: ${skillName} (${currentScope}) - Agents: ${agents}`);
+            } else {
+                // Debug: log lines that don't match
+                this.outputChannel.appendLine(`  -> No match for line: "${line}"`);
             }
         }
         
