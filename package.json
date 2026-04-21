@@ -280,6 +280,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node16",
     "watch": "npm run compile -- --watch",
+    "package": "vsce package --allow-missing-repository",
     "test": "node ./out/test/runTest.js",
     "lint": "eslint src --ext ts",
     "pretest": "npm run compile && npm run lint"
@@ -292,6 +293,7 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.9.1",
     "chai": "^6.2.2",
     "esbuild": "^0.16.17",
     "eslint": "^8.57.1",

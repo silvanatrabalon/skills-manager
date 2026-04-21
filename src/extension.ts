@@ -1024,7 +1024,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const showExplorerCommand = vscode.commands.registerCommand('skills.explorer.show', async () => {
             try {
                 // Show Skills tree view in sidebar
-                await vscode.commands.executeCommand('workbench.view.extension.skills-sidebar');
+                await vscode.commands.executeCommand('workbench.view.extension.skills-explorer');
                 vscode.window.showInformationMessage('Skills Explorer opened!');
             } catch (error: any) {
                 console.error('Error showing skills explorer:', error);

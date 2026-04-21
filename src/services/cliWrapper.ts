@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as fs from 'fs';
+import * as path from 'path';
 import { UpdateCheckService, SkillUpdateInfo } from './updateCheckService';
 
 const execAsync = promisify(exec);
@@ -517,7 +519,7 @@ export class SkillsCliService {
                 
                 skills.push({
                     name: skillName,
-                    description: `Installed ${currentScope} skill`,
+                    description: this.readSkillDescription(skillPath),
                     source: skillPath,
                     agent: agents,
                     installed: true,
@@ -532,6 +534,30 @@ export class SkillsCliService {
         skills.forEach(skill => this.outputChannel.appendLine(`- ${skill.name} (${skill.scope}) - ${skill.agent}`));
         
         return skills;
+    }
+
+    private readSkillDescription(skillPath: string): string {
+        try {
+            const homedir = require('os').homedir();
+            const resolved = skillPath.startsWith('~') 
+                ? path.join(homedir, skillPath.slice(1)) 
+                : skillPath;
+            const skillMd = path.join(resolved, 'SKILL.md');
+            if (!fs.existsSync(skillMd)) { return ''; }
+            const content = fs.readFileSync(skillMd, 'utf8');
+            // Extract description from frontmatter
+            const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+            if (fmMatch) {
+                const descMatch = fmMatch[1].match(/description:\s*(.+)/i);
+                if (descMatch) { return descMatch[1].trim().replace(/^["']|["']$/g, ''); }
+            }
+            // Fallback: first non-empty, non-heading line after frontmatter
+            const body = fmMatch ? content.slice(fmMatch[0].length) : content;
+            const firstLine = body.split('\n').map(l => l.trim()).find(l => l && !l.startsWith('#'));
+            return firstLine || '';
+        } catch {
+            return '';
+        }
     }
 
     showDebugOutput(): vscode.OutputChannel {

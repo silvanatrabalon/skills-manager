@@ -35,10 +35,8 @@ This works in both VS Code and Cursor. Without authentication, you can still ins
 
 1. Download `skills-manager-1.0.0.vsix` from [this repository](https://github.com/niceintern/vs-extension)
 2. Install:
-   ```bash
-   code --install-extension skills-manager-1.0.0.vsix
-   ```
-   For Cursor: `cursor --install-extension skills-manager-1.0.0.vsix`
+   For Cursor: `Cmd+Shift+P` → `Extensions: Install from VSIX...` → select the file
+3. Show Panel: `Cmd+Shift+P` → `Skills: Show Skills Explorer`
 
 ## Quick Start
 
