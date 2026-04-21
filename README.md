@@ -1,6 +1,6 @@
 # Skills Manager Extension
 
-A Visual Studio Code extension that provides a graphical interface for managing agent skills. Built on top of the [Skills CLI](https://github.com/vercel-labs/skills) created by Vercel.
+A VS Code and Cursor extension that provides a graphical interface for managing agent skills. Built on top of the [Skills CLI](https://github.com/vercel-labs/skills) created by Vercel.
 
 ## Features
 
