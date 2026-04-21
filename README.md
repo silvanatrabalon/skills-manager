@@ -31,9 +31,16 @@ The extension checks for skill updates using the GitHub API. To enable this, con
 Without a token, you can still install and manage skills but update checking will be limited to 60 requests/hour for public repos and won't work for private repos.
 
 ## Installation
-[Extension](https://marketplace.visualstudio.com/items?itemName=SilvanaTrabalon.skills-manager)
-- Show Panel: `Cmd+Shift+P` → `Skills: Show Skills Explorer`
 
+Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=SilvanaTrabalon.skills-manager), then open the panel with `Cmd+Shift+P` → `Skills: Show Skills Explorer`.
+
+### Cursor
+
+Search for **Skills Manager** in the Extensions tab. If the extension doesn't appear (e.g. it was recently published), you can install it manually:
+
+1. Download the `.vsix` file from this repository.
+2. In Cursor, `Cmd+Shift+P` → `Extensions: Install from VSIX...` and select the file.
+3. Open the panel: `Cmd+Shift+P` → `Skills: Show Skills Explorer`.
 ## Quick Start
 
 1. **Add a Repository**: Click the "+" button in the Repositories section of the sidebar
