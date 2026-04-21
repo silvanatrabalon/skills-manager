@@ -1,4 +1,4 @@
-# Skills Manager for VS Code
+# Skills Manager Extension
 
 A Visual Studio Code extension that provides a graphical interface for managing agent skills. Built on top of the [Skills CLI](https://github.com/vercel-labs/skills) created by Vercel.
 
@@ -33,11 +33,12 @@ This works in both VS Code and Cursor. Without authentication, you can still ins
 
 ## Installation
 
-1. Install from VSIX:
+1. Download `skills-manager-1.0.0.vsix` from [this repository](https://github.com/niceintern/vs-extension)
+2. Install:
    ```bash
    code --install-extension skills-manager-1.0.0.vsix
    ```
-   Also works in Cursor with: `cursor --install-extension skills-manager-1.0.0.vsix`
+   For Cursor: `cursor --install-extension skills-manager-1.0.0.vsix`
 
 ## Quick Start
 
