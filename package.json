@@ -3,6 +3,7 @@
   "displayName": "Skills Manager",
   "description": "Visual interface for managing agent skills using Vercel's skills CLI",
   "version": "1.0.0",
+  "icon": "skill-manager.png",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -29,12 +30,6 @@
         "icon": "$(add)"
       },
       {
-        "command": "skills.update.all",
-        "title": "Update All Skills",
-        "category": "Skills",
-        "icon": "$(sync)"
-      },
-      {
         "command": "skills.refresh",
         "title": "Refresh",
         "icon": "$(refresh)"
@@ -55,12 +50,6 @@
         "icon": "$(close)"
       },
       {
-        "command": "skills.showDebug",
-        "title": "Show Debug Output",
-        "category": "Skills",
-        "icon": "$(output)"
-      },
-      {
         "command": "skills.skill.install",
         "title": "Install Skill",
         "icon": "$(cloud-download)"
@@ -79,12 +68,6 @@
         "command": "skills.skill.showDetails",
         "title": "Show Skill Details",
         "icon": "$(info)"
-      },
-      {
-        "command": "skills.test.cli",
-        "title": "Test CLI Connection",
-        "category": "Skills",
-        "icon": "$(debug-console)"
       },
       {
         "command": "skills.update.check",
@@ -114,7 +97,7 @@
         {
           "id": "skills-explorer",
           "title": "Skills Manager",
-          "icon": "$(extensions)"
+          "icon": "skill-manager.png"
         }
       ]
     },
@@ -315,10 +298,10 @@
     "mocha": "^11.7.5",
     "typescript": "^4.9.4"
   },
-  "publisher": "your-publisher-name",
+  "publisher": "niceintern",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/skills-manager"
+    "url": "https://github.com/niceintern/skills-manager"
   },
   "keywords": [
     "skills",

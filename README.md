@@ -1,209 +1,101 @@
 # Skills Manager for VS Code
 
-A Visual Studio Code extension that provides a graphical interface for managing agent skills using the [Vercel Skills CLI](https://github.com/vercel-labs/skills).
+A Visual Studio Code extension that provides a graphical interface for managing agent skills. Built on top of the [Skills CLI](https://github.com/vercel-labs/skills) created by Vercel.
 
 ## Features
 
 ### 🎯 **Visual Skills Management**
-- **Tree view** of all installed skills organized by scope and agent
-- **Interactive explorer** with searchable skill repository
-- **One-click install/update/remove** operations
-- **Multi-repository support** for your custom skills
+- **Tree view** of all installed skills organized by scope (Global / Project)
+- **One-click install/update/remove** with inline buttons
+- **Automatic update detection** — checks for skill updates every 2 hours via GitHub API
+- **Update indicator** on skills that have newer versions available
 
 ### 📚 **Repository Management**
-- **Configure multiple repositories** (GitHub, GitLab, local paths)
-- **Support for private repositories** with authentication
-- **Real-time synchronization** and caching
-- **Repository validation** and error handling
+- **Subscribe to multiple repositories** (GitHub, GitLab, local paths)
+- **Browse available skills** from your subscribed repositories
+- **Skill details panel** with full description in a formatted webview
 
-### ⚙️ **Flexible Configuration**
-- **Global vs Project scope** installation options
-- **Target specific agents** (GitHub Copilot, Claude Code, Cursor, etc.)
-- **Auto-update preferences** and CLI management
-- **Import/export** repository configurations
+### ⚙️ **Flexible Installation**
+- **Choose scope**: Project only, Global, or Both
+- **Choose target agents**: Cursor, GitHub Copilot, Claude Code, OpenCode, and more
+- **Scope-aware updates**: update a skill in one scope without affecting the other
+
+## GitHub Authentication (for update checking)
+
+The extension checks for skill updates using the GitHub API. To enable this, install the [GitHub CLI](https://cli.github.com/) and log in:
+
+```bash
+brew install gh
+gh auth login
+```
+
+This works in both VS Code and Cursor. Without authentication, you can still install and manage skills but update checking will be limited to 60 requests/hour for public repos and won't work for private repos.
 
 ## Installation
 
-### Prerequisites
-
-First, install the Skills CLI globally:
-```bash
-npm install -g skills
-```
-
-### Extension Installation
-1. Install from the VS Code Marketplace (coming soon)
-2. OR install from VSIX:
+1. Install from VSIX:
    ```bash
    code --install-extension skills-manager-1.0.0.vsix
    ```
+   Also works in Cursor with: `cursor --install-extension skills-manager-1.0.0.vsix`
 
 ## Quick Start
 
-1. **First Setup**: Ensure the Skills CLI is installed (see prerequisites above)
-2. **Add Repository**: Click the "+" button in the Skills Manager sidebar
-3. **Browse Skills**: Use the Skills Explorer to discover available skills
-4. **Install Skills**: Click "Install" on any skill card or use Ctrl+Shift+P → "Skills: Install Skills..."
+1. **Add a Repository**: Click the "+" button in the Repositories section of the sidebar
+3. **Browse Skills**: Expand "Available Skills" to see skills from your subscribed repos
+4. **Install a Skill**: Click the install button on any available skill, choose scope and agents
+5. **Check for Updates**: Use the refresh button or wait for automatic checks every 2 hours
 
 ## Usage
 
 ### Adding a Repository
 
-1. Open the Skills Manager panel in the sidebar (📦 icon)
+1. Open the Skills Manager panel in the sidebar
 2. Click "+" next to "Repositories"
-3. Choose repository type:
-   - **GitHub**: `username/repository` or full URL
-   - **GitLab**: Full GitLab URL
-   - **Local**: Path to local skills folder
+3. Choose repository type (GitHub, GitLab, or Local)
+4. Enter a name for the repository (e.g., "My Skills", "Company Skills")
+5. Enter the repository URL or select a local folder
 
 ### Installing Skills
 
-**Method 1: Skills Explorer**
-1. Click "Show Skills Explorer" in the tree view
-2. Browse or search for skills
-3. Click "Install" on desired skills
+1. Expand "Available Skills" in the tree view
+2. Click the install button (⬇) on any skill
+3. Choose installation scope: Project only, Global, or Both
+4. Select target agents (Cursor, GitHub Copilot, Claude Code, etc.)
 
-**Method 2: Quick Install**
-1. Press `Ctrl+Shift+P` (Cmd+Shift+P on Mac)
-2. Run "Skills: Install Skills..."
-3. Select from available skills
+### Updating Skills
 
-**Method 3: Tree View**
-1. Right-click any skill in the tree
-2. Choose "Install Skill"
+- Skills with available updates show an update indicator (⬆) in the tree view
+- Click the update button to update a specific skill
+- Use `Cmd+Shift+P` → `Skills: Check for Updates` to force a check
 
-### Managing Installed Skills
+### Removing Skills
 
-- **Update**: Right-click → "Update Skill" or use "Update All Skills"
-- **Remove**: Right-click → "Uninstall Skill"
-- **View Details**: Click any skill to see details
-
-## Configuration
-
-### Repository Settings
-
-```json
-{
-  "skills.repositories": [
-    {
-      "id": "my-skills",
-      "name": "My Custom Skills",
-      "url": "myusername/my-skills-repo", 
-      "type": "github"
-    }
-  ]
-}
-```
-
-### Default Settings
-
-```json
-{
-  "skills.defaultScope": "project",        // "global" | "project"
-  "skills.autoUpdate": false,              // Auto-update skills
-  "skills.targetAgents": [                 // Default agents
-    "github-copilot",
-    "claude-code", 
-    "cursor"
-  ],
-  "skills.autoInstallCli": true            // Auto-install Skills CLI
-}
-```
+- Click the uninstall button (🗑) on any installed skill
+- Confirm the removal
 
 ## Supported Agents
 
 The extension works with any agent supported by the Skills CLI:
 
-- GitHub Copilot
-- Claude Code  
 - Cursor
-- Cline/Windsurf
-- Continue
-- CodeBuddy
+- GitHub Copilot
+- Claude Code
 - OpenCode
+- Antigravity
+- Codex
 - And 40+ more...
 
-## Commands
+## Skill Discovery
 
-| Command | Description |
-|---------|-------------|
-| `Skills: Show Skills Explorer` | Open the main skills browser |
-| `Skills: Install Skills...` | Interactive skill installation |
-| `Skills: Update All Skills` | Update all installed skills |
-| `Skills: Refresh` | Refresh skills and repository data |
+The extension uses the Skills CLI for discovering skills in repositories. The CLI searches for folders containing a `SKILL.md` file across [many locations](https://github.com/vercel-labs/skills#skill-discovery) including `skills/`, agent-specific directories (`.cursor/skills/`, `.claude/skills/`, etc.), and the repository root itself.
 
-## Requirements
+## Lock Files
 
-- **VS Code 1.74.0** or higher
-- **Node.js 16+** and **npm** 
-- **Git** (for remote repositories)
+The extension uses lock files to track installed skills and detect updates:
 
-The extension will automatically install the Skills CLI if needed.
+- **Project lock** (`skills-lock.json` in your project root) — tracks skills installed with project scope. This file should be committed to your repo so all team members share the same skills.
+- **Global lock** (`~/.agents/.skill-lock.json`) — tracks skills installed globally, managed by the Skills CLI.
 
-## Repository Structure
+After each install or update, the extension enriches these lock files with a `skillFolderHash` (the GitHub Tree SHA of the skill folder) which is used to detect when a newer version is available remotely.
 
-When creating your own skills repository, use this structure:
-
-```
-my-skills-repo/
-├── skills/
-│   ├── my-skill-1/
-│   │   └── SKILL.md
-│   └── my-skill-2/
-│       └── SKILL.md
-└── README.md
-```
-
-Each `SKILL.md` needs frontmatter:
-
-```markdown
----
-name: my-skill
-description: What this skill does
----
-
-# My Skill
-
-Instructions for the agent...
-```
-
-## Troubleshooting
-
-### Skills CLI Not Found
-- Enable auto-install: `"skills.autoInstallCli": true`
-- Manual install: `npm install -g @vercel/skills`
-
-### Repository Not Loading
-- Check URL format and network connection
-- Verify repository contains valid `SKILL.md` files
-- Check VS Code Output → "Skills Manager" for errors
-
-### Skills Not Installing
-- Ensure target agents are installed
-- Check skill name doesn't conflict
-- Verify repository permissions for private repos
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Changelog
-
-### 1.0.0
-- ✨ Initial release
-- 🎯 Visual skills management
-- 📚 Multi-repository support
-- ⚙️ Flexible configuration
-- 🔍 Skills explorer with search
-
----
-
-**Made with ❤️ for the VS Code community**

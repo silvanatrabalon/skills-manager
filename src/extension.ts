@@ -338,12 +338,6 @@ export async function activate(context: vscode.ExtensionContext) {
                     configItems.push(noTokenItem);
                 }
                 
-                const debugItem = new vscode.TreeItem('Debug Environment', vscode.TreeItemCollapsibleState.None);
-                debugItem.iconPath = new vscode.ThemeIcon('bug');
-                debugItem.description = 'Show debug info';
-                debugItem.command = { command: 'skills.debug.environment', title: 'Debug Environment' };
-                configItems.push(debugItem);
-                
                 return configItems;
             },
             
@@ -377,10 +371,6 @@ export async function activate(context: vscode.ExtensionContext) {
 
         const removeRepoCommand = vscode.commands.registerCommand('skills.repository.remove', async (item: vscode.TreeItem) => {
             await removeRepositoryInteractive(item, configService, repoProvider, skillsProvider);
-        });
-        
-        const showDebugCommand = vscode.commands.registerCommand('skills.showDebug', () => {
-            cliService.showDebugOutput();
         });
         
         const skillSelectCommand = vscode.commands.registerCommand('skills.skill.select', async (skill) => {
@@ -1031,132 +1021,6 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         });
 
-        const debugEnvironmentCommand = vscode.commands.registerCommand('skills.debug.environment', async () => {
-            const output = cliService.showDebugOutput();
-            const token = configService.getGitHubToken();
-            const tokenSource = configService.getGitHubTokenSource();
-            const apiEnabled = configService.isGitHubApiEnabled();
-            
-            output.appendLine('=== COMPLETE SKILLS MANAGER DEBUG ===');
-            output.appendLine(`GITHUB_TOKEN env var: ${process.env.GITHUB_TOKEN ? 'Set (' + process.env.GITHUB_TOKEN.length + ' chars)' : 'Not set'}`);
-            output.appendLine(`ConfigService token: ${token ? 'YES (' + token.length + ' chars)' : 'NO'}`);
-            output.appendLine(`Token source: ${tokenSource}`);
-            output.appendLine(`API enabled: ${apiEnabled}`);
-            
-            // Force refresh and wait for completion
-            output.appendLine('\n🔄 Loading current skills data...');
-            await skillsProvider.refreshAsync();
-            
-            // Direct inspection of internal state
-            const internalState = (skillsProvider as any).installedSkills;
-            output.appendLine(`\n=== INSTALLED SKILLS INTERNAL STATE ===`);
-            output.appendLine(`Type of installedSkills: ${typeof internalState}`);
-            output.appendLine(`Is array?: ${Array.isArray(internalState)}`);
-            output.appendLine(`Has local?: ${Object.prototype.hasOwnProperty.call(internalState, 'local')}`);
-            output.appendLine(`Has global?: ${Object.prototype.hasOwnProperty.call(internalState, 'global')}`);
-            output.appendLine(`local length: ${internalState?.local?.length}`);
-            output.appendLine(`global length: ${internalState?.global?.length}`);
-            output.appendLine(`local content: ${JSON.stringify(internalState?.local?.map((s: any) => s.name))}`);
-            output.appendLine(`global content: ${JSON.stringify(internalState?.global?.map((s: any) => s.name))}`);
-            output.appendLine(`installedCount getter: ${skillsProvider.installedCount}`);
-            output.appendLine(`=== END INTERNAL STATE ===\n`);
-            
-            output.appendLine(`Available skills: ${skillsProvider.availableCount}`);
-            output.appendLine(`Installed skills: ${skillsProvider.installedCount}`);
-            
-            const config = vscode.workspace.getConfiguration('skills');
-            output.appendLine(`VS Code github.token: ${config.get('github.token') ? 'Set (***masked***)' : 'Not set'}`);
-            output.appendLine(`VS Code github.enableApi: ${config.get('github.enableApi')}`);
-            output.show();
-            
-            // Force reload
-            vscode.window.showInformationMessage(
-                'Debug complete. Force reload available skills?',
-                'Yes', 'No'
-            ).then(async (selection) => {
-                if (selection === 'Yes') {
-                    output.appendLine('\n🔄 FORCE RELOADING...');
-                    try {
-                        await skillsProvider.reloadAvailableSkills();
-                        output.appendLine(`✅ Reload complete: ${skillsProvider.availableCount} skills`);
-                    } catch (error) {
-                        output.appendLine(`❌ Reload error: ${error}`);
-                    }
-                }
-            });
-        });
-
-        const testCliCommand = vscode.commands.registerCommand('skills.test.cli', async () => {
-            const output = cliService.showDebugOutput();
-            output.appendLine('=== TESTING CLI DIRECTLY ===');
-            
-            try {
-                // Test the raw CLI command
-                const { exec } = require('child_process');
-                const { promisify } = require('util');
-                const execAsync = promisify(exec);
-                
-                output.appendLine('Running: npx skills list');
-                const result = await execAsync('npx skills list', {
-                    env: { 
-                        ...process.env, 
-                        PATH: process.env.PATH + ':/usr/local/bin:/opt/homebrew/bin:' + require('os').homedir() + '/.nvm/versions/node/v20.15.0/bin'
-                    }
-                });
-                
-                output.appendLine('STDOUT:');
-                output.appendLine(result.stdout);
-                output.appendLine('STDERR:');
-                output.appendLine(result.stderr || 'none');
-                
-                // Test skills find
-                output.appendLine('\n=== TESTING SKILLS FIND ===');
-                const findResult = await execAsync('npx skills find', {
-                    env: { 
-                        ...process.env, 
-                        PATH: process.env.PATH + ':/usr/local/bin:/opt/homebrew/bin:' + require('os').homedir() + '/.nvm/versions/node/v20.15.0/bin'
-                    }
-                });
-                output.appendLine('FIND STDOUT:');
-                output.appendLine(findResult.stdout);
-                
-                // Test repositories configuration
-                output.appendLine('\n=== TESTING REPOSITORIES CONFIG ===');
-                const repositories = await configService.getRepositories();
-                output.appendLine(`Configured repositories: ${repositories.length}`);
-                repositories.forEach((repo, index) => {
-                    output.appendLine(`${index + 1}. ${repo.name} (${repo.type}) - ${repo.url}`);
-                });
-                
-                // Now test through our service
-                output.appendLine('\n=== TESTING THROUGH SERVICE ===');
-                const skills = await skillsProvider.skillsService.getInstalledSkills();
-                output.appendLine(`Service returned: ${skills.length} skills`);
-                skills.forEach(skill => {
-                    output.appendLine(`- ${skill.name} (${skill.scope}) - ${skill.description}`);
-                });
-                
-                // DIRECT PROVIDER TEST
-                output.appendLine('\n=== TESTING PROVIDER DIRECTLY ===');
-                output.appendLine(`skillsProvider.installedSkills.length: ${(skillsProvider as any).installedSkills.length}`);
-                output.appendLine(`skillsProvider.installedCount: ${skillsProvider.installedCount}`);
-                output.appendLine(`skillsProvider.availableCount: ${skillsProvider.availableCount}`);
-                
-                // Force manual assignment to test
-                output.appendLine('\n=== MANUAL VARIABLE TEST ===');
-                (skillsProvider as any).installedSkills = skills;
-                output.appendLine(`After manual assignment: ${(skillsProvider as any).installedSkills.length}`);
-                output.appendLine('Firing tree change event...');
-                (skillsProvider as any)._onDidChangeTreeData.fire();
-                
-            } catch (error) {
-                output.appendLine(`ERROR: ${error}`);
-            }
-            
-            output.show();
-            vscode.window.showInformationMessage('CLI test complete - check output panel');
-        });
-
         const showExplorerCommand = vscode.commands.registerCommand('skills.explorer.show', async () => {
             try {
                 // Show Skills tree view in sidebar
@@ -1248,30 +1112,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 vscode.window.showErrorMessage(`Failed to check for updates: ${error.message}`);
             }
         });
-
-        // ← DEBUG: Comando para debug de estado de updates
-        const debugUpdateStateCommand = vscode.commands.registerCommand('skills.update.debug', async () => {
-            try {
-                const state = updateManager.getDebugState();
-                vscode.window.showInformationMessage(
-                    `Debug State: ${state.availableUpdates.length} skills with updates, Last check: ${state.lastCheck ? new Date(state.lastCheck).toLocaleString() : 'Never'}`
-                );
-                console.log('🔍 [UpdateManager Debug State]', JSON.stringify(state, null, 2));
-            } catch (error: any) {
-                vscode.window.showErrorMessage(`Failed to get debug state: ${error.message}`);
-            }
-        });
-
-        // ← DEBUG: Comando para limpiar estado de updates
-        const clearUpdateStateCommand = vscode.commands.registerCommand('skills.update.clear', async () => {
-            try {
-                await updateManager.clearAllUpdates();
-                vscode.window.showInformationMessage('Update state cleared!');
-                await skillsProvider.refreshAsync();
-            } catch (error: any) {
-                vscode.window.showErrorMessage(`Failed to clear update state: ${error.message}`);
-            }
-        });
         
         // Add subscriptions
         context.subscriptions.push(
@@ -1282,7 +1122,6 @@ export async function activate(context: vscode.ExtensionContext) {
             collapseAllCommand,
             addRepoCommand,
             removeRepoCommand,
-            showDebugCommand,
             skillSelectCommand,
             configureTokenCommand,
             removeTokenCommand,
@@ -1291,15 +1130,11 @@ export async function activate(context: vscode.ExtensionContext) {
             skillInstallCommand,
             skillUninstallCommand,
             skillShowDetailsCommand,
-            debugEnvironmentCommand,
-            testCliCommand,
             showExplorerCommand,
             interactiveInstallCommand,
-            skillUpdateCommand,        // ← NUEVO: Update command
-            forceUpdateCheckCommand,   // ← NUEVO: Force check command
-            debugUpdateStateCommand,   // ← DEBUG: Debug state command
-            clearUpdateStateCommand,   // ← DEBUG: Clear state command
-            updateManager             // ← NUEVO: Dispose del UpdateManager cuando se desactive la extensión
+            skillUpdateCommand,
+            forceUpdateCheckCommand,
+            updateManager
         );
         
         // Show message after a small delay
