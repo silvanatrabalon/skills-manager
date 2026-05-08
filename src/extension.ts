@@ -106,39 +106,30 @@ class RepositoryTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem>
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-    console.log('🚀 [Extension] Skills Manager extension is now active!');
     
     try {
         // Initialize services
-        console.log('🔧 [Extension] Initializing services...');
         const configService = new ConfigService(context);
         const cliService = new SkillsCliService();
         
         // Create tree providers
-        console.log('🌳 [Extension] Creating tree providers...');
         const skillsService = new SkillsService(cliService, configService);
         const skillsProvider = new SkillsTreeProvider(skillsService);
         const repoProvider = new RepositoryTreeProvider(configService);
         
         // Register tree views
-        console.log('📝 [Extension] Registering tree view...');
         const skillsTreeView = vscode.window.createTreeView('skills.tree', {
             treeDataProvider: skillsProvider,
             showCollapseAll: true
         });
-        console.log('📝 [Extension] Tree view registered successfully');
         
         // NOW initialize the skills provider AFTER tree view registration
-        console.log('🚀 [Extension] Calling skillsProvider.initialize()...');
         try {
             await skillsProvider.initialize();
-            console.log('✅ [Extension] skillsProvider.initialize() completed successfully');
         } catch (error) {
-            console.error('❌ [Extension] Error in skillsProvider.initialize():', error);
         }
         
         // ← NUEVO: Initialize UpdateManager DESPUÉS de que skillsProvider esté listo
-        console.log('🕒 [Extension] Initializing UpdateManager...');
         const updateManager = new UpdateManager(context);
         await updateManager.initialize();
         
@@ -254,7 +245,6 @@ export async function activate(context: vscode.ExtensionContext) {
         // Comando específico para install desde available skills
         const skillInstallCommand = vscode.commands.registerCommand('skills.skill.install', async (skillItem: any) => {
             try {
-                console.log('🚀 [Install] Installing skill:', skillItem);
                 
                 // Extract data from TreeItem if needed
                 const skill = skillItem.skill || skillItem;
@@ -321,9 +311,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
 
                 const agentNames = selectedAgents.map(agent => agent.label);
-                console.log(`🚀 [Install] Selected agents: ${agentNames.join(', ')}`);
-
-                console.log(`🚀 [Install] Selected scope: ${selectedScope.scope}`);
 
                 // Execute installation based on selected scope
                 if (selectedScope.scope === 'both') {
@@ -374,7 +361,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 await skillsProvider.refreshAsync();
                 
             } catch (error: any) {
-                console.error('❌ [Install] Error installing skill:', error);
                 vscode.window.showErrorMessage(`Failed to install skill: ${error.message}`);
             }
         });
@@ -382,7 +368,6 @@ export async function activate(context: vscode.ExtensionContext) {
         // Comando específico para uninstall desde installed skills
         const skillUninstallCommand = vscode.commands.registerCommand('skills.skill.uninstall', async (skillItem: any) => {
             try {
-                console.log('🗑️ [Uninstall] Uninstalling skill:', skillItem);
                 
                 // Extract data from TreeItem if needed
                 const skill = skillItem.skill || skillItem;
@@ -406,7 +391,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 // Determinar scope del skill para remover correctamente
                 const skillScope = skill.scope; // 'project' | 'global' | undefined
                 
-                console.log(`🗑️ [Uninstall] Skill scope detected: ${skillScope}`);
 
                 // Ejecutar el comando CLI via service (incluye --yes automáticamente)
                 const results = await skillsService.removeSkills([skillName], { 
@@ -428,10 +412,8 @@ export async function activate(context: vscode.ExtensionContext) {
                                 if (lockContent.skills?.[skillName]) {
                                     delete lockContent.skills[skillName];
                                     fs.writeFileSync(projectLock, JSON.stringify(lockContent, null, 2) + '\n', 'utf8');
-                                    console.log(`🗑️ [Uninstall] Removed ${skillName} from local lock file`);
                                 }
                             } catch (e: any) {
-                                console.error(`🗑️ [Uninstall] Error cleaning local lock: ${e.message}`);
                             }
                         }
                     }
@@ -442,7 +424,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 await skillsProvider.refreshAsync();
                 
             } catch (error: any) {
-                console.error('❌ [Uninstall] Error uninstalling skill:', error);
                 vscode.window.showErrorMessage(`Failed to uninstall skill: ${error.message}`);
             }
         });
@@ -450,10 +431,6 @@ export async function activate(context: vscode.ExtensionContext) {
         // Comando específico para mostrar detalles del skill  
         const skillShowDetailsCommand = vscode.commands.registerCommand('skills.skill.showDetails', async (skillItem: any) => {
             try {
-                console.log('ℹ️ [Details] Showing skill details for:', skillItem);
-                console.log('ℹ️ [Details] skillItem keys:', Object.keys(skillItem || {}));
-                console.log('ℹ️ [Details] skillItem.skill:', skillItem?.skill);
-                console.log('ℹ️ [Details] skillItem.fullDescription:', skillItem?.fullDescription);
                 
                 const skillName = skillItem?.name || skillItem?.skillName || skillItem?.label || 'Unknown Skill';
                 const description = skillItem?.description || 'No description available';
@@ -476,8 +453,6 @@ export async function activate(context: vscode.ExtensionContext) {
                                   (skillItem?.skill && 'installed' in skillItem.skill && skillItem.skill.installed) || 
                                   false;
                                   
-                console.log('ℹ️ [Details] Final fullDescription:', fullDescription);
-                console.log('ℹ️ [Details] Description length:', fullDescription.length);
                 
                 // Show in a webview panel for better formatting
                 const panel = vscode.window.createWebviewPanel(
@@ -803,7 +778,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 `;
                 
             } catch (error: any) {
-                console.error('❌ [Details] Error showing skill details:', error);
                 vscode.window.showErrorMessage(`Failed to show skill details: ${error.message}`);
             }
         });
@@ -814,7 +788,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 await vscode.commands.executeCommand('workbench.view.extension.skills-explorer');
                 vscode.window.showInformationMessage('Skills Explorer opened!');
             } catch (error: any) {
-                console.error('Error showing skills explorer:', error);
                 vscode.window.showErrorMessage(`Failed to show Skills Explorer: ${error.message}`);
             }
         });
@@ -825,7 +798,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 await vscode.commands.executeCommand('skills.refresh');
                 vscode.window.showInformationMessage('Use the Skills tree view to browse and install skills!');
             } catch (error: any) {
-                console.error('Error in interactive install:', error);
                 vscode.window.showErrorMessage(`Failed to start interactive install: ${error.message}`);
             }
         });
@@ -833,7 +805,6 @@ export async function activate(context: vscode.ExtensionContext) {
         // ← NUEVO: Comando para actualizar un skill específico
         const skillUpdateCommand = vscode.commands.registerCommand('skills.skill.update', async (skillItem: any) => {
             try {
-                console.log('🔄 [Update] Updating skill:', skillItem);
                 
                 const skill = skillItem.skill || skillItem;
                 const skillName = skill.name || skill.skillName || skillItem.label;
@@ -854,7 +825,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
 
                 // Ejecutar el update
-                console.log(`🔄 [Extension] Updating skill "${skillName}" with scope: "${skill.scope}"`);
                 const results = await skillsService.updateSkills([skillName], skill.scope);
                 const result = results[0];
                 
@@ -877,7 +847,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
                 
             } catch (error: any) {
-                console.error('❌ [Update] Error updating skill:', error);
                 vscode.window.showErrorMessage(`Failed to update skill: ${error.message}`);
             }
         });
@@ -928,7 +897,6 @@ export async function activate(context: vscode.ExtensionContext) {
         }, 1000);
         
     } catch (error) {
-        console.error('Error in Skills Manager activation:', error);
         vscode.window.showErrorMessage('Skills Manager failed to activate: ' + (error as Error).message);
     }
 }
@@ -1036,5 +1004,4 @@ async function removeRepositoryInteractive(item: vscode.TreeItem, configService:
 }
 
 export function deactivate() {
-    console.log('Skills Manager extension is now deactivated!');
 }

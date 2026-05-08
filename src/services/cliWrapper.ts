@@ -146,7 +146,6 @@ export class SkillsCliService {
                     await this.runCommand(`${npmCmd} install -g skills`);
                     return;
                 } catch (error) {
-                    console.log(`Failed with ${npmCmd}:`, error);
                     continue;
                 }
             }
@@ -288,12 +287,10 @@ export class SkillsCliService {
             }
 
             const finalCommand = args.join(' ');
-            console.log(`🔄 [CLI] Executing: ${finalCommand}`);
 
             const result = await this.runCommand(finalCommand);
             return this.parseUpdateResults(result.stdout);
         } catch (error) {
-            console.error(`🔄 [CLI] Error updating skills:`, error);
             this.outputChannel.appendLine(`Error updating skills: ${(error as Error).message}`);
             return [];
         }
@@ -313,7 +310,6 @@ export class SkillsCliService {
             args.push('--yes');
 
             const finalCommand = args.join(' ');
-            console.log(`🗑️ [CLI] Executing: ${finalCommand}`);
 
             const result = await this.runCommand(finalCommand);
             return this.parseRemoveResults(result.stdout, skills);
@@ -600,7 +596,6 @@ export class SkillsCliService {
     }
 
     private parseUpdateResults(output: string): UpdateResult[] {
-        console.log('🔄 [CLI] Parsing update output:', output);
         
         const results: UpdateResult[] = [];
         const lines = output.split('\n');
@@ -658,7 +653,6 @@ export class SkillsCliService {
             });
         }
         
-        console.log('🔄 [CLI] Parsed update results:', results);
         return results;
     }
 

@@ -82,13 +82,11 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     private updateManager?: UpdateManager;  // ← NUEVO
 
     constructor(public skillsService: SkillsService) {
-        console.log('�️  [SkillsTreeProvider] Constructor called');
         this.outputChannel = vscode.window.createOutputChannel('Skills Tree Provider Debug');
         
         // Initialize arrays as empty with new scope structure
         this.installedSkills = { local: [], global: [] };
         this.availableSkills = [];
-        console.log('🏗️  [SkillsTreeProvider] Constructor complete - arrays initialized as empty with scope structure');
     }
     
     // ← NUEVO: Método para configurar el UpdateManager
@@ -111,23 +109,14 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     
     // Call this AFTER tree view is registered
     async initialize(): Promise<void> {
-        console.log('🚀 [SkillsTreeProvider] INITIALIZE called');
         
         try {
-            console.log('🚀 [TreeProvider] Loading skills...');
             await this.loadSkills();
             
-            console.log('🚀 [TreeProvider] Skills loaded successfully!');
-            console.log('🚀 [TreeProvider] Final installedSkills total:', (this.installedSkills?.local.length || 0) + (this.installedSkills?.global.length || 0));
-            console.log('🚀 [TreeProvider] Final availableSkills.length:', this.availableSkills?.length || 0);
-            console.log('🚀 [TreeProvider] Firing tree change event...');
             
             this._onDidChangeTreeData.fire();
-            console.log('✅ [TreeProvider] Tree change event fired - Initialize complete!');
             
         } catch (error) {
-            console.error('❌ [TreeProvider] Initialize error:', error);
-            console.error('❌ [TreeProvider] Error details:', JSON.stringify(error, null, 2));
             
             // Even if there's an error, fire the event to show what we have
             this._onDidChangeTreeData.fire();
@@ -135,40 +124,25 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     }
 
     refresh(): void {
-        console.log('🔄 [SkillsTreeProvider] Refresh called');
         this.loadSkills().then(() => {
-            console.log('🔄 [SkillsTreeProvider] Load complete, firing tree data change');
-            console.log('🔄 [SkillsTreeProvider] Current counts:', {
-                installed: this.installedSkills.local.length + this.installedSkills.global.length,
-                available: this.availableSkills.length
-            });
             
             // Force fire the event to ensure UI updates
             setTimeout(() => {
-                console.log('🔥 [SkillsTreeProvider] FORCE FIRING tree data change event');
                 this._onDidChangeTreeData.fire();
             }, 100);
             
         }).catch(error => {
-            console.error('❌ [SkillsTreeProvider] Refresh error:', error);
             this._onDidChangeTreeData.fire(); // Fire anyway to show error state
         });
     }
 
     async refreshAsync(): Promise<void> {
-        console.log('🔄 [SkillsTreeProvider] Async refresh called');
         this.outputChannel.appendLine('🔄 [TreeProvider] Starting async refresh...');
         await this.loadSkills();
-        console.log('🔄 [SkillsTreeProvider] Async load complete, firing tree data change');
-        console.log('🔄 [SkillsTreeProvider] Final counts:', {
-            installed: this.installedSkills.local.length + this.installedSkills.global.length,
-            available: this.availableSkills.length
-        });
         this.outputChannel.appendLine('🔄 [TreeProvider] About to fire tree data change event');
         
         // Force fire the event with a small delay to ensure UI updates
         await new Promise(resolve => setTimeout(resolve, 100));
-        console.log('🔥 [SkillsTreeProvider] FORCE FIRING async tree data change event');
         this._onDidChangeTreeData.fire();
         
         this.outputChannel.appendLine('🔄 [TreeProvider] Tree data change event fired');
@@ -179,29 +153,22 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     }
 
     getChildren(element?: SkillTreeItem): Thenable<SkillTreeItem[]> {
-        console.log('📦 [TreeProvider] getChildren called for:', element?.label || 'ROOT');
-        console.log('📦 [TreeProvider] installedSkills:', this.installedSkills?.length || 'undefined');
         
         try {
             if (!element) {
                 // Root level - show two main sections
-                console.log('📦 [TreeProvider] Returning ROOT items...');
                 const items = this.getRootItems();
-                console.log('📦 [TreeProvider] Root items created:', items.length);
                 return Promise.resolve(items);
             } else {
                 // Child level - show skills in each section  
-                console.log('📦 [TreeProvider] Returning CHILD items for:', element.label);
                 return Promise.resolve(this.getChildItems(element));
             }
         } catch (error) {
-            console.error('❌ [TreeProvider] ERROR in getChildren:', error);
             return Promise.resolve([]);
         }
     }
 
     private async loadSkills(): Promise<void> {
-        console.log('� [SkillsTreeProvider] Loading skills...');
         
         // Load installed skills by scope
         try {
@@ -216,14 +183,11 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
             this.outputChannel.appendLine('✅ [TreeProvider] Installed skills loaded successfully');
             
         } catch (error) {
-            console.error('❌ [TreeProvider] Error loading installed skills:', error);
             this.installedSkills = { local: [], global: [] };
         }
         
         // Load available skills (Re-enabled with timeout fix)
-        console.log('🌐 [TreeProvider] Loading available skills...');
         try {
-            console.log('🌐 [TreeProvider] Calling getAvailableSkills with timeout protection...');
             
             // Add timeout protection for available skills
             const available = await Promise.race([
@@ -233,21 +197,15 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
                 )
             ]);
             
-            console.log('🌐 [TreeProvider] getAvailableSkills completed successfully');
-            console.log('🌐 [TreeProvider] Received available skills from', available.length, 'repos');
             this.availableSkills = available;
-            console.log('✅ [TreeProvider] Available skills assigned successfully');
             
         } catch (error) {
-            console.error('❌ [TreeProvider] Error in getAvailableSkills (using timeout protection):', error);
             this.availableSkills = [];
         }
         
-        console.log('🎉 [TreeProvider] loadSkills method completed successfully!');
     }
 
     private getRootItems(): SkillTreeItem[] {
-        console.log('📋 [TreeProvider] getRootItems - Local skills:', this.installedSkills?.local?.length || 0, 'Global skills:', this.installedSkills?.global?.length || 0);
         
         try {
             const localCount = this.installedSkills?.local?.length || 0;
@@ -255,7 +213,6 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
             const totalInstalled = localCount + globalCount;
             const availableCount = (this.availableSkills || []).reduce((total, repo) => total + (repo.skills?.length || 0), 0);
             
-            console.log('📋 [TreeProvider] Creating items with counts:', { local: localCount, global: globalCount, available: availableCount });
             
             const items = [
                 new SkillTreeItem(
@@ -272,10 +229,8 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
                 )
             ];
             
-            console.log('📋 [TreeProvider] Created items:', items.map(i => i.label));
             return items;
         } catch (error) {
-            console.error('❌ [TreeProvider] Error in getRootItems:', error);
             return [
                 new SkillTreeItem('Error loading skills', vscode.TreeItemCollapsibleState.None)
             ];
@@ -451,12 +406,6 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
         const globalCount = this.installedSkills?.global?.length ?? 0;
         const total = localCount + globalCount;
         
-        console.log('📊 [TreeProvider] installedCount getter called:', {
-            local: localCount,
-            global: globalCount,
-            total: total,
-            installedSkills: this.installedSkills
-        });
         
         return total;
     }
@@ -468,7 +417,6 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
     // Install skill method
     async installSkill(skillName: string, repository: string, _path?: string): Promise<void> {
         try {
-            console.log(`Installing skill: ${skillName} from ${repository}`);
             
             // Find the skill in available skills to get details
             let foundSkill: any = null;
@@ -496,7 +444,6 @@ export class SkillsTreeProvider implements vscode.TreeDataProvider<SkillTreeItem
             }
             
         } catch (error) {
-            console.error(`Error installing skill ${skillName}:`, error);
             vscode.window.showErrorMessage(`Error installing skill: ${error}`);
             throw error;
         }

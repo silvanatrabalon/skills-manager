@@ -37,7 +37,6 @@ export class UpdateCheckService {
         if (this.outputChannel) {
             this.outputChannel.appendLine(message);
         }
-        console.log(message);
     }
 
     // ============================================
