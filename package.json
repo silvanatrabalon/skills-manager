@@ -2,7 +2,7 @@
   "name": "skills-manager",
   "displayName": "Skills Manager",
   "description": "Visual interface for managing agent skills using Vercel's skills CLI",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "icon": "skill-manager.png",
   "engines": {
     "vscode": "^1.74.0"
